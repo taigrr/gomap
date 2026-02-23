@@ -151,12 +151,16 @@ func sendProbePacket(laddr, raddr string, port int, flags, window uint16, option
 	sport := uint16(randomPort(10000, 65535))
 
 	// Listen for response
-	listenAddr, err := net.ResolveIPAddr("ip4", laddr)
+	network := "ip4"
+	if IsIPv6(laddr) {
+		network = "ip6"
+	}
+	listenAddr, err := net.ResolveIPAddr(network, laddr)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := net.ListenIP("ip4:tcp", listenAddr)
+	conn, err := net.ListenIP(ipProtocol(laddr, "tcp"), listenAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +226,7 @@ func sendCustomTCPPacket(laddr, raddr string, sport, dport, flags, window uint16
 		tcpH.Flags = uint16(headerWords<<12) | flags
 	}
 
-	conn, err := net.Dial("ip4:tcp", raddr)
+	conn, err := net.Dial(ipProtocol(raddr, "tcp"), raddr)
 	if err != nil {
 		return err
 	}

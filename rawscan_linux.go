@@ -150,12 +150,17 @@ type rawResponse struct {
 
 // listenForResponse listens for a TCP response from the target.
 func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawResponse, timeout time.Duration) {
-	listenAddr, err := net.ResolveIPAddr("ip4", laddr)
+	proto := ipProtocol(laddr, "tcp")
+	network := "ip4"
+	if IsIPv6(laddr) {
+		network = "ip6"
+	}
+	listenAddr, err := net.ResolveIPAddr(network, laddr)
 	if err != nil {
 		return
 	}
 
-	conn, err := net.ListenIP("ip4:tcp", listenAddr)
+	conn, err := net.ListenIP(proto, listenAddr)
 	if err != nil {
 		return
 	}
@@ -208,7 +213,7 @@ func sendTCPPacket(laddr, raddr string, sport, dport, flags uint16) error {
 		UrgentPointer: 0,
 	}
 
-	conn, err := net.Dial("ip4:tcp", raddr)
+	conn, err := net.Dial(ipProtocol(raddr, "tcp"), raddr)
 	if err != nil {
 		return err
 	}
