@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/taigrr/gomap"
 
@@ -13,12 +14,13 @@ import (
 )
 
 var (
-	fast     bool
-	scanType string
-	jsonOut  bool
-	cidr     string
-	topPorts int
-	version  = "dev"
+	fast      bool
+	scanType  string
+	jsonOut   bool
+	cidr      string
+	topPorts  int
+	discovery bool
+	version   = "dev"
 )
 
 func main() {
@@ -37,6 +39,7 @@ func main() {
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().StringVarP(&cidr, "cidr", "c", "", "Scan a CIDR range instead of a single host")
 	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
+	rootCmd.Flags().BoolVarP(&discovery, "ping", "P", false, "Host discovery only (no port scan)")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -46,6 +49,11 @@ func main() {
 func run(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+
+	// Host discovery mode
+	if discovery {
+		return runDiscovery(ctx)
+	}
 
 	st, err := parseScanType(scanType)
 	if err != nil {
@@ -100,6 +108,42 @@ func clearProgress() {
 	if !jsonOut {
 		fmt.Fprintln(os.Stderr)
 	}
+}
+
+func runDiscovery(ctx context.Context) error {
+	opts := gomap.DiscoveryOptions{}
+	var results []gomap.HostResult
+	var err error
+
+	if cidr != "" {
+		results, err = gomap.DiscoverCIDR(ctx, cidr, opts)
+	} else {
+		results, err = gomap.DiscoverLocal(ctx, opts)
+	}
+	if err != nil {
+		return err
+	}
+
+	alive := 0
+	for _, r := range results {
+		if r.Alive {
+			alive++
+			name := r.IP
+			if r.Hostname != "" {
+				name = fmt.Sprintf("%s (%s)", r.Hostname, r.IP)
+			}
+			if jsonOut {
+				fmt.Printf("{\"ip\":%q,\"hostname\":%q,\"alive\":true,\"latency\":%q}\n", r.IP, r.Hostname, r.Latency)
+			} else {
+				fmt.Printf("Host %s is up (latency: %s)\n", name, r.Latency.Round(time.Millisecond))
+			}
+		}
+	}
+
+	if !jsonOut {
+		fmt.Fprintf(os.Stderr, "\n%d hosts up out of %d scanned\n", alive, len(results))
+	}
+	return nil
 }
 
 func parseScanType(s string) (gomap.ScanType, error) {
