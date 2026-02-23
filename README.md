@@ -160,6 +160,41 @@ gomap.ApplyTiming(&opts, gomap.TimingAggressive)
 \* Falls back to connect scan on non-Linux platforms
 \** May require elevated privileges
 
+## nmap Database Compatibility
+
+gomap can parse and use nmap's database files directly:
+
+```go
+import "github.com/taigrr/gomap/probedb"
+
+// Load from files at runtime
+db, _ := probedb.LoadServiceProbesFile("/usr/share/nmap/nmap-service-probes")
+osdb, _ := probedb.LoadOSDBFile("/usr/share/nmap/nmap-os-db")
+
+// Or embed at compile time with go:embed
+//go:embed nmap-service-probes
+var serviceProbesData []byte
+
+db, _ := probedb.LoadServiceProbesData(serviceProbesData)
+
+// Or from fs.FS
+//go:embed data
+var dbFS embed.FS
+
+db, _ := probedb.LoadServiceProbesFS(dbFS, "data/nmap-service-probes")
+
+// Auto-find installed nmap databases
+spPath, osPath := probedb.FindDatabases()
+```
+
+Supported database formats:
+- **nmap-service-probes** — 187 probes, 11,266 match patterns for service/version detection
+- **nmap-os-db** — 6,036 OS fingerprints with scoring/matching
+- **nmap-mac-prefixes** — MAC vendor OUI lookup (via generate-mac tool)
+- **nmap-services** — Port-to-service mappings (via generate-services tool)
+
+Set `GOMAP_DB_PATH` to specify a custom database directory.
+
 ## Regenerating Service Data
 
 The port-to-service mappings are generated from the IANA registry:
