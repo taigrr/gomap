@@ -1,124 +1,170 @@
 # gomap
 
-![GitHub](https://img.shields.io/github/license/JustinTimperio/gomap)
-[![Go Reference](https://pkg.go.dev/badge/github.com/JustinTimperio/gomap.svg)](https://pkg.go.dev/github.com/JustinTimperio/gomap)
-[![Go Report Card](https://goreportcard.com/badge/github.com/JustinTimperio/gomap)](https://goreportcard.com/report/github.com/JustinTimperio/gomap)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/a338ee8deaad42328d78f98f6e6481a3)](https://www.codacy.com/gh/JustinTimperio/gomap/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=JustinTimperio/gomap&amp;utm_campaign=Badge_Grade)
-
-## What is gomap?
-Gomap is a fully self-contained nmap like module for Golang. Unlike other projects which provide nmap C bindings or rely on other local dependencies, gomap is a fully implemented in pure Go. Gomap imports zero non-core modules making it ideal for applications that have zero control on the clients operating system. Since this is a small library, it only focuses on providing a few core features. For the most part its API is stable with changes being applied to its unexposed internal scanning functions.
-
+A pure Go, cross-platform, library-importable port scanner.
 
 ## Features
-  - Parallel port scanning using go routines
-  - Automated CIDR range scanning
-  - Service prediction by port number
-  - SYN (Silent) Scanning Mode
-  - UDP Scanning (Non-Stealth)
-  - Fast and detailed scanning for common ports
-  - Pure Go with zero dependencies
-  - Easily integrated into other projects
 
-## Upcoming Features
-  - CIDR range size detection
+- **Cross-platform** — TCP connect scanning works on Linux, macOS, and Windows
+- **Library-first** — import `github.com/taigrr/gomap` and scan from your own code
+- **SYN stealth scanning** — available on Linux with raw socket privileges
+- **ARP table parsing** — Linux only, via `/proc/net/arp`
+- **IANA service database** — 5,800+ TCP and 5,400+ UDP services from the official IANA registry
+- **Top-ports scanning** — fast scan uses top 200 most commonly open ports
+- **Full scan mode** — scans all IANA-registered ports
+- **Context-aware** — all scans respect `context.Context` for cancellation
+- **JSON output** — structured results for scripting
 
-## Example Usage - 1
-Performs a fastscan for the most common ports on every IP on a local range
-### Create Files
- 1. Create `quickscan.go`
+## Install
+
+```bash
+go install github.com/taigrr/gomap/cmd@latest
+```
+
+## CLI Usage
+
+```bash
+# Scan a single host (top ports)
+gomap -f example.com
+
+# Full scan (all known ports)
+gomap example.com
+
+# Scan a CIDR range
+gomap -c 192.168.1.0/24 -f
+
+# Top 100 ports only
+gomap -t 100 example.com
+
+# Different scan types (Linux, requires root)
+sudo gomap -s syn example.com     # SYN stealth scan
+sudo gomap -s fin example.com     # FIN scan
+sudo gomap -s xmas example.com    # Xmas tree scan
+sudo gomap -s null example.com    # Null scan
+sudo gomap -s ack example.com     # ACK scan (firewall mapping)
+sudo gomap -s window example.com  # Window scan
+gomap -s udp example.com          # UDP scan
+
+# Host discovery (ping sweep)
+gomap -P -c 192.168.1.0/24
+
+# OS detection
+sudo gomap -O example.com
+
+# JSON output
+gomap -j example.com
+```
+
+## Library Usage
+
 ```go
 package main
 
 import (
-	"fmt"
+    "context"
+    "fmt"
+    "log"
 
-	"github.com/JustinTimperio/gomap"
+    "github.com/taigrr/gomap"
 )
 
 func main() {
-	var (
-		proto    = "tcp"
-		fastscan = true
-		syn      = false
-	)
+    ctx := context.Background()
 
-	scan, err := gomap.ScanRange(proto, fastscan, syn)
-	if err != nil {
-		// handle error
-	}
-	fmt.Printf(scan.String())
+    result, err := gomap.ScanHost(ctx, "example.com", gomap.ScanOptions{
+        FastScan: true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    for _, p := range result.OpenPorts() {
+        fmt.Printf("Port %d: %s\n", p.Port, p.Service)
+    }
 }
 ```
- 2. `go mod init quickscan`
- 3. `go mod tidy`
- 4. `go run quickscan.go`
 
-### Example Output
+### Scan Options
 
-```
-Host: computer-name (192.168.1.132)
-        |     Port      Service
-        |     ----      -------
-        |---- 22        ssh
- 
-Host: server-nginx (192.168.1.143)
-        |     Port      Service
-        |     ----      -------
-        |---- 443       https
-        |---- 80        http
-        |---- 22        ssh
- 
-Host: server-minio (192.168.1.112)
-        |     Port      Service
-        |     ----      -------
-        |---- 22        ssh
-
-Host: some-phone (192.168.1.155)
-        |- No Open Ports
-```
-
-## Example Usage - 2
-Performs a detailed stealth scan on a single IP
-
-### Create Files
- 1. Create `stealthmap.go`
 ```go
-package main
-
-import (
-	"fmt"
-
-	"github.com/JustinTimperio/gomap"
-)
-
-func main() {
-	// Stealth scans MUST be run as root/admin
-	var (
-		fastscan = false
-		syn      = true
-		proto    = "tcp"
-		ip       = "192.168.1.120"
-	)
-
-	scan, err := gomap.ScanIP(ip, proto, fastscan, syn)
-	if err != nil {
-		// handle error
-	}
-	fmt.Printf(scan.String())
+type ScanOptions struct {
+    Protocol     string              // "tcp" (default)
+    FastScan     bool                // Common ports only
+    Stealth      bool                // SYN scan (Linux only)
+    Timeout      time.Duration       // Per-port timeout (default 3s)
+    Workers      int                 // Concurrent goroutines
+    Ports        []int               // Custom port list (nil = use defaults)
+    ProgressFunc func(scanned, total int) // Progress callback
 }
 ```
- 2. `go mod init stealthmap`
- 3. `go mod tidy`
- 4. `sudo go run stealthmap.go`
 
-### Example Output
+### Scanning ranges
 
+```go
+// Scan a specific CIDR
+results, err := gomap.ScanCIDR(ctx, "10.0.0.0/24", opts)
+
+// Scan local network
+results, err := gomap.ScanRange(ctx, opts)
 ```
-Host: 192.168.1.120 | Ports Scanned 3236/3236
-Host: Voyager (192.168.1.120)
-        |     Port      Service
-        |     ----      -------
-        |---- 22        SSH Remote Login Protocol
-        |---- 80        World Wide Web HTTP
-        |---- 443       HTTP protocol over TLS/SSL
+
+### Utilities
+
+```go
+// Look up service name by port
+svc := gomap.LookupService(443) // "HTTP protocol over TLS/SSL"
+
+// Get local IP
+ip, err := gomap.GetLocalIP()
+
+// Get local /24 range
+cidr := gomap.GetLocalRange()
+
+// Parse CIDR to host list
+hosts := gomap.CreateHostRange("192.168.1.0/24")
 ```
+
+## Platform Support
+
+| Feature | Linux | macOS | Windows |
+|---------|-------|-------|---------|
+| TCP connect scan | Yes | Yes | Yes |
+| SYN stealth scan | Yes | No* | No* |
+| FIN/Xmas/Null scan | Yes | No* | No* |
+| ACK/Window scan | Yes | No* | No* |
+| UDP scan | Yes | Yes | Yes |
+| Host discovery (ICMP) | Yes | Yes** | Yes** |
+| Host discovery (TCP) | Yes | Yes | Yes |
+| ARP discovery | Yes | No | No |
+| OS detection | Yes | No | No |
+
+\* Falls back to connect scan on non-Linux platforms
+\** May require elevated privileges
+
+## Regenerating Service Data
+
+The port-to-service mappings are generated from the IANA registry:
+
+```bash
+go generate ./...
+```
+
+This fetches the latest IANA CSV and regenerates `services_generated.go`.
+
+## Roadmap
+
+- [x] All TCP scan types (SYN, FIN, Xmas, Null, ACK, Window)
+- [x] UDP scanning
+- [x] Host discovery (ICMP, TCP SYN/ACK, UDP, ARP)
+- [x] OS fingerprinting (TCP/IP stack analysis)
+- [ ] Service version detection (banner grabbing)
+- [ ] OS fingerprint database matching
+- [ ] Timing templates (T0-T5)
+- [ ] XML output (nmap-compatible)
+- [ ] IPv6 support
+- [ ] Traceroute
+- [ ] MAC address vendor lookup
+- [ ] NSE-style scripting
+
+## License
+
+0BSD

@@ -1,3 +1,6 @@
+// Package gomap is a pure Go, cross-platform, library-importable port scanner
+// inspired by nmap. It supports TCP connect scanning on all platforms and
+// SYN (stealth) scanning on Linux where raw sockets are available.
 package gomap
 
 import (
@@ -7,203 +10,122 @@ import (
 	"net"
 )
 
-// IPScanResult contains the results of a scan on a single ip
-type IPScanResult struct {
+// ScanResult contains the results of a scan on a single host.
+type ScanResult struct {
 	Hostname string
 	IP       []net.IP
-	Results  []portResult
+	Ports    []PortResult
 }
 
-// JsonRange contains a slice of of JsonIP results
-type JsonRange struct {
-	results []JsonIP
-}
-
-// JsonIP contains the results for a single JSON entry
-type JsonIP struct {
-	IP       string
-	Hostname string
-	Active   bool
-	Ports    []string
-}
-
-type portResult struct {
+// PortResult describes the state of a single port.
+type PortResult struct {
 	Port    int
-	State   bool
+	Open    bool
+	State   PortState
 	Service string
 }
 
-type tcpHeader struct {
-	SrcPort       uint16
-	DstPort       uint16
-	SeqNum        uint32
-	AckNum        uint32
-	Flags         uint16
-	Window        uint16
-	ChkSum        uint16
-	UrgentPointer uint16
-}
+// RangeScanResult contains results for multiple hosts.
+type RangeScanResult []*ScanResult
 
-type tcpOption struct {
-	Kind   uint8
-	Length uint8
-	Data   []byte
-}
-
-// RangeScanResult contains multiple IPScanResults
-type RangeScanResult []*IPScanResult
-
-// ScanIP scans a single IP for open ports
-func ScanIP(hostname string, proto string, fastscan bool, stealth bool) (*IPScanResult, error) {
-	laddr, err := getLocalIP()
-	if err != nil {
-		return nil, err
-	}
-
-	if stealth {
-		if canSocketBind(laddr) == false {
-			return nil, fmt.Errorf("socket: operation not permitted")
+// OpenPorts returns only the open ports from a scan result.
+func (r *ScanResult) OpenPorts() []PortResult {
+	var open []PortResult
+	for _, p := range r.Ports {
+		if p.Open {
+			open = append(open, p)
 		}
 	}
-	return scanIPPorts(hostname, laddr, proto, fastscan, stealth)
+	return open
 }
 
-// ScanRange scans every address on a CIDR for open ports
-func ScanRange(proto string, fastscan bool, stealth bool) (RangeScanResult, error) {
-	laddr, err := getLocalIP()
-	if err != nil {
-		return nil, err
-	}
-
-	if stealth {
-		if canSocketBind(laddr) == false {
-			return nil, fmt.Errorf("socket: operation not permitted")
+// HasOpenPorts returns true if any ports are open.
+func (r *ScanResult) HasOpenPorts() bool {
+	for _, p := range r.Ports {
+		if p.Open {
+			return true
 		}
 	}
-	return scanIPRange(laddr, proto, fastscan, stealth)
+	return false
 }
 
-// String with the results of a single scanned IP
-func (results *IPScanResult) String() string {
+// String returns a human-readable summary of the scan result.
+func (r *ScanResult) String() string {
 	b := bytes.NewBuffer(nil)
-	ip := results.IP[len(results.IP)-1]
+	ip := r.IP[len(r.IP)-1]
 
-	fmt.Fprintf(b, "\nHost: %s (%s)\n", results.Hostname, ip)
+	fmt.Fprintf(b, "\nHost: %s (%s)\n", r.Hostname, ip)
 
-	active := false
-	for _, r := range results.Results {
-		if r.State {
-			active = true
-			break
-		}
-	}
-	if active {
-		fmt.Fprintf(b, "\t|     %s	%s\n", "Port", "Service")
-		fmt.Fprintf(b, "\t|     %s	%s\n", "----", "-------")
-		for _, v := range results.Results {
-			if v.State {
-				fmt.Fprintf(b, "\t|---- %d	%s\n", v.Port, v.Service)
+	if r.HasOpenPorts() {
+		fmt.Fprintf(b, "\t|     %s\t%s\n", "Port", "Service")
+		fmt.Fprintf(b, "\t|     %s\t%s\n", "----", "-------")
+		for _, v := range r.Ports {
+			if v.Open {
+				fmt.Fprintf(b, "\t|---- %d\t%s\n", v.Port, v.Service)
 			}
 		}
-	} else if results.Hostname != "Unknown" {
+	} else if r.Hostname != "Unknown" {
 		fmt.Fprintf(b, "\t|---- %s\n", "No Open Ports Found")
 	}
 	return b.String()
 }
 
-// String with the results of multiple scanned IP's
+// String returns a human-readable summary of all scan results.
 func (results RangeScanResult) String() string {
 	b := bytes.NewBuffer(nil)
 	for _, r := range results {
-		ip := r.IP[len(r.IP)-1]
-
-		fmt.Fprintf(b, "\nHost: %s (%s)\n", r.Hostname, ip)
-		active := false
-
-		for _, r := range r.Results {
-			if r.State {
-				active = true
-				break
-			}
-		}
-		if active {
-			fmt.Fprintf(b, "\t|     %s	%s\n", "Port", "Service")
-			fmt.Fprintf(b, "\t|     %s	%s\n", "----", "-------")
-			for _, v := range r.Results {
-				if v.State {
-					fmt.Fprintf(b, "\t|---- %d	%s\n", v.Port, v.Service)
-				}
-			}
-		} else if r.Hostname != "Unknown" {
-			fmt.Fprintf(b, "\t|---- %s\n", "No Open Ports Found")
-		}
+		b.WriteString(r.String())
 	}
-
 	return b.String()
 }
 
-// Contains a marshaled struct containing the results for a ip scan
-func (results *IPScanResult) Json() (string, error) {
-	var ipdata JsonIP
-	fmt.Println(results.IP)
-	ipdata.IP = fmt.Sprintf("%s", results.IP[len(results.IP)-1])
-	ipdata.Hostname = results.Hostname
+// JSONResult is the JSON-serializable representation of a single host scan.
+type JSONResult struct {
+	IP       string   `json:"ip"`
+	Hostname string   `json:"hostname"`
+	Active   bool     `json:"active"`
+	Ports    []string `json:"ports,omitempty"`
+}
 
-	active := false
-	for _, r := range results.Results {
-		if r.State {
-			active = true
-			break
-		}
+// JSON returns a JSON-encoded string of the scan result.
+func (r *ScanResult) JSON() (string, error) {
+	jr := JSONResult{
+		IP:       r.IP[len(r.IP)-1].String(),
+		Hostname: r.Hostname,
+		Active:   r.HasOpenPorts(),
 	}
-	ipdata.Active = active
 
-	if active {
-		for _, v := range results.Results {
-			if v.State {
-				entry := fmt.Sprintf("%d: %s", v.Port, v.Service)
-				ipdata.Ports = append(ipdata.Ports, entry)
-			}
+	for _, v := range r.Ports {
+		if v.Open {
+			jr.Ports = append(jr.Ports, fmt.Sprintf("%d: %s", v.Port, v.Service))
 		}
 	}
 
-	j, err := json.MarshalIndent(ipdata, "", "	")
+	j, err := json.MarshalIndent(jr, "", "\t")
 	if err != nil {
 		return "", err
 	}
 	return string(j), nil
 }
 
-// Contains a marshaled struct containing the results for a range scan
-func (results RangeScanResult) Json() (string, error) {
-	var data JsonRange
-
+// JSON returns a JSON-encoded string of all scan results.
+func (results RangeScanResult) JSON() (string, error) {
+	var jrs []JSONResult
 	for _, r := range results {
-		var ipdata JsonIP
-		ipdata.IP = fmt.Sprintf("%s", r.IP[len(r.IP)-1])
-		ipdata.Hostname = r.Hostname
-
-		active := false
-		for _, r := range r.Results {
-			if r.State {
-				active = true
-				break
+		jr := JSONResult{
+			IP:       r.IP[len(r.IP)-1].String(),
+			Hostname: r.Hostname,
+			Active:   r.HasOpenPorts(),
+		}
+		for _, v := range r.Ports {
+			if v.Open {
+				jr.Ports = append(jr.Ports, fmt.Sprintf("%d: %s", v.Port, v.Service))
 			}
 		}
-		ipdata.Active = active
-
-		if active {
-			for _, v := range r.Results {
-				if v.State {
-					entry := fmt.Sprintf("%d: %s", v.Port, v.Service)
-					ipdata.Ports = append(ipdata.Ports, entry)
-				}
-			}
-		}
-		data.results = append(data.results, ipdata)
+		jrs = append(jrs, jr)
 	}
 
-	j, err := json.MarshalIndent(data.results, "", "	")
+	j, err := json.MarshalIndent(jrs, "", "\t")
 	if err != nil {
 		return "", err
 	}
