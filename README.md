@@ -8,7 +8,9 @@ A pure Go, cross-platform, library-importable port scanner.
 - **Library-first** — import `github.com/taigrr/gomap` and scan from your own code
 - **SYN stealth scanning** — available on Linux with raw socket privileges
 - **ARP table parsing** — Linux only, via `/proc/net/arp`
-- **Fast and full scan modes** — common ports (~75) or detailed list (~200+)
+- **IANA service database** — 5,800+ TCP and 5,400+ UDP services from the official IANA registry
+- **Top-ports scanning** — fast scan uses top 200 most commonly open ports
+- **Full scan mode** — scans all IANA-registered ports
 - **Context-aware** — all scans respect `context.Context` for cancellation
 - **JSON output** — structured results for scripting
 
@@ -113,6 +115,29 @@ hosts := gomap.CreateHostRange("192.168.1.0/24")
 | TCP connect scan | Yes | Yes | Yes |
 | SYN stealth scan | Yes | No | No |
 | ARP table | Yes | No | No |
+
+## Regenerating Service Data
+
+The port-to-service mappings are generated from the IANA registry:
+
+```bash
+go generate ./...
+```
+
+This fetches the latest IANA CSV and regenerates `services_generated.go`.
+
+## Roadmap
+
+- [ ] UDP scanning
+- [ ] Service version detection (banner grabbing)
+- [ ] OS fingerprinting
+- [ ] Additional scan types (FIN, XMAS, NULL, ACK, Window)
+- [ ] Host discovery (ICMP, TCP/UDP ping)
+- [ ] Timing templates (T0-T5)
+- [ ] XML output (nmap-compatible)
+- [ ] IPv6 support
+- [ ] Traceroute
+- [ ] MAC address vendor lookup
 
 ## License
 
