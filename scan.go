@@ -82,6 +82,25 @@ type ScanOptions struct {
 	// SourcePort forces scans to use this source port number.
 	SourcePort int
 
+	// MinRate is the minimum packets per second (0 = no minimum).
+	MinRate int
+
+	// MaxRate is the maximum packets per second (0 = unlimited).
+	MaxRate int
+
+	// VersionIntensity controls service probe depth (0-9, default 7).
+	// 0 = light (only NULL probe), 9 = try all probes.
+	VersionIntensity int
+
+	// PacketTrace logs every packet sent and received.
+	PacketTrace bool
+
+	// OSScanLimit skips OS detection on hosts without at least 1 open + 1 closed port.
+	OSScanLimit bool
+
+	// OSScanGuess lowers the OS match confidence threshold for more aggressive guessing.
+	OSScanGuess bool
+
 	// BadSum sends packets with an intentionally incorrect checksum.
 	// Useful for detecting firewalls/IDS that don't verify checksums.
 	BadSum bool
@@ -111,6 +130,17 @@ func (o *ScanOptions) defaults() {
 		} else {
 			o.Workers = 500
 		}
+	}
+	// Enforce minimum workers for min-rate
+	if o.MinRate > 0 || o.MaxRate > 0 {
+		rl := NewRateLimiter(o.MinRate, o.MaxRate)
+		minW := rl.MinWorkers(o.Timeout)
+		if minW > o.Workers {
+			o.Workers = minW
+		}
+	}
+	if o.VersionIntensity == 0 && !o.FastScan {
+		o.VersionIntensity = 7 // nmap default
 	}
 }
 
@@ -279,6 +309,12 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 		close(in)
 	}()
 
+	// Rate limiter
+	var rl *RateLimiter
+	if opts.MinRate > 0 || opts.MaxRate > 0 {
+		rl = NewRateLimiter(opts.MinRate, opts.MaxRate)
+	}
+
 	// Worker pool
 	var wg sync.WaitGroup
 	for i := 0; i < opts.Workers; i++ {
@@ -288,6 +324,9 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 			for job := range in {
 				if ctx.Err() != nil {
 					return
+				}
+				if rl != nil {
+					rl.Wait()
 				}
 				scanPort(ctx, resultCh, opts, hostname, laddr, job)
 				if opts.ScanDelay > 0 {
