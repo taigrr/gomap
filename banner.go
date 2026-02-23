@@ -29,7 +29,18 @@ type ServiceVersion struct {
 // and matches responses against known service signatures.
 //
 // If probeDB is nil, the embedded probe database is used.
+// GrabBanner connects to a port and attempts service identification using
+// the nmap-compatible probe database. It sends protocol-specific probes
+// and matches responses against known service signatures.
+//
+// If probeDB is nil, the embedded probe database is used.
+// intensity controls probe depth (0-9): 0=NULL probe only, 9=all probes.
 func GrabBanner(ctx context.Context, host string, port int, timeout time.Duration, probeDB *probedb.ServiceProbeDB) (*ServiceVersion, error) {
+	return GrabBannerWithIntensity(ctx, host, port, timeout, probeDB, 7)
+}
+
+// GrabBannerWithIntensity is like GrabBanner but with configurable probe intensity.
+func GrabBannerWithIntensity(ctx context.Context, host string, port int, timeout time.Duration, probeDB *probedb.ServiceProbeDB, intensity int) (*ServiceVersion, error) {
 	if probeDB == nil {
 		var err error
 		probeDB, err = DefaultProbeDB()
@@ -42,6 +53,18 @@ func GrabBanner(ctx context.Context, host string, port int, timeout time.Duratio
 	probes := probeDB.ProbesForPort(port, "TCP")
 	if len(probes) == 0 {
 		return grabBannerSimple(ctx, host, port, timeout)
+	}
+
+	// Limit probes by intensity: intensity 0 = only NULL probe,
+	// intensity 9 = all probes. Scale linearly.
+	if intensity < 9 && len(probes) > 1 {
+		maxProbes := 1 + (len(probes)-1)*intensity/9
+		if maxProbes < 1 {
+			maxProbes = 1
+		}
+		if maxProbes < len(probes) {
+			probes = probes[:maxProbes]
+		}
 	}
 
 	for _, probe := range probes {
@@ -79,7 +102,7 @@ func GrabBanners(ctx context.Context, host string, result *ScanResult, opts Scan
 		if ctx.Err() != nil {
 			break
 		}
-		sv, err := GrabBanner(ctx, host, p.Port, opts.Timeout, db)
+		sv, err := GrabBannerWithIntensity(ctx, host, p.Port, opts.Timeout, db, opts.VersionIntensity)
 		if err != nil {
 			continue
 		}
