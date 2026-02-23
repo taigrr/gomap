@@ -1,3 +1,5 @@
+//go:build !nonpsl
+
 package gomap
 
 import (
@@ -45,11 +47,12 @@ func TestLookupMACVendorHW(t *testing.T) {
 }
 
 func TestMACPrefixesNotEmpty(t *testing.T) {
-	if len(MACPrefixes) == 0 {
+	m := MACPrefixes()
+	if len(m) == 0 {
 		t.Error("MACPrefixes should not be empty")
 	}
-	if len(MACPrefixes) < 30000 {
-		t.Errorf("MACPrefixes has %d entries, expected at least 30000", len(MACPrefixes))
+	if len(m) < 30000 {
+		t.Errorf("MACPrefixes has %d entries, expected at least 30000", len(m))
 	}
 }
 
