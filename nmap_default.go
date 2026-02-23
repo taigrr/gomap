@@ -16,6 +16,10 @@ var (
 	defaultProbeDB     *probedb.ServiceProbeDB
 	defaultProbeDBOnce sync.Once
 	defaultProbeDBErr  error
+
+	defaultOSDB     *probedb.OSDB
+	defaultOSDBOnce sync.Once
+	defaultOSDBErr  error
 )
 
 // DefaultProbeDB returns the embedded nmap service probe database.
@@ -26,6 +30,16 @@ func DefaultProbeDB() (*probedb.ServiceProbeDB, error) {
 		defaultProbeDB, defaultProbeDBErr = probedb.ParseServiceProbes(bytes.NewReader(data))
 	})
 	return defaultProbeDB, defaultProbeDBErr
+}
+
+// DefaultOSDB returns the embedded nmap OS fingerprint database.
+// Parsed lazily on first call and cached.
+func DefaultOSDB() (*probedb.OSDB, error) {
+	defaultOSDBOnce.Do(func() {
+		data := nmapprobes.OSFingerprints()
+		defaultOSDB, defaultOSDBErr = probedb.ParseOSDB(bytes.NewReader(data))
+	})
+	return defaultOSDB, defaultOSDBErr
 }
 
 // LookupMACVendor returns the vendor name for a given MAC address.

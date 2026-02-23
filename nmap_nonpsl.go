@@ -14,6 +14,10 @@ var (
 	defaultProbeDB     *probedb.ServiceProbeDB
 	defaultProbeDBOnce sync.Once
 	defaultProbeDBErr  error
+
+	defaultOSDB     *probedb.OSDB
+	defaultOSDBOnce sync.Once
+	defaultOSDBErr  error
 )
 
 // DefaultProbeDB attempts to find and load nmap-service-probes from the system.
@@ -29,6 +33,20 @@ func DefaultProbeDB() (*probedb.ServiceProbeDB, error) {
 		defaultProbeDB, defaultProbeDBErr = probedb.LoadServiceProbesFile(sp)
 	})
 	return defaultProbeDB, defaultProbeDBErr
+}
+
+// DefaultOSDB attempts to find and load nmap-os-db from the system.
+// When built with the "nonpsl" tag, no nmap data is embedded.
+func DefaultOSDB() (*probedb.OSDB, error) {
+	defaultOSDBOnce.Do(func() {
+		_, osPath := probedb.FindDatabases()
+		if osPath == "" {
+			defaultOSDBErr = fmt.Errorf("no nmap-os-db found on system (set GOMAP_DB_PATH or use --os-db flag)")
+			return
+		}
+		defaultOSDB, defaultOSDBErr = probedb.LoadOSDBFile(osPath)
+	})
+	return defaultOSDB, defaultOSDBErr
 }
 
 // LookupMACVendor is a no-op when built with the nonpsl tag.
