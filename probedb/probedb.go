@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -175,6 +176,16 @@ func (ps PortSet) Contains(port int) bool {
 // Len returns the number of ports in the set.
 func (ps PortSet) Len() int {
 	return len(ps.ports)
+}
+
+// Sorted returns all ports in the set in ascending order.
+func (ps PortSet) Sorted() []int {
+	ports := make([]int, 0, len(ps.ports))
+	for p := range ps.ports {
+		ports = append(ports, p)
+	}
+	sort.Ints(ports)
+	return ports
 }
 
 // ParseServiceProbes parses an nmap-service-probes format file.

@@ -7,19 +7,185 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/taigrr/gomap/probedb"
 )
 
 // ServiceVersion contains the result of service version detection.
 type ServiceVersion struct {
-	Port    int
-	Service string
-	Banner  string
-	Version string
+	Port        int
+	Service     string
+	Banner      string
+	Version     string
+	ProductName string
+	Info        string
+	OS          string
+	DeviceType  string
+	CPE         []string
 }
 
-// GrabBanner connects to a port and reads the initial banner.
-// Many services (SSH, SMTP, FTP, etc.) send a banner on connect.
-func GrabBanner(ctx context.Context, host string, port int, timeout time.Duration) (*ServiceVersion, error) {
+// GrabBanner connects to a port and attempts service identification using
+// the nmap-compatible probe database. It sends protocol-specific probes
+// and matches responses against known service signatures.
+//
+// If probeDB is nil, the embedded probe database is used.
+func GrabBanner(ctx context.Context, host string, port int, timeout time.Duration, probeDB *probedb.ServiceProbeDB) (*ServiceVersion, error) {
+	if probeDB == nil {
+		var err error
+		probeDB, err = DefaultProbeDB()
+		if err != nil {
+			// Fall back to simple banner grab if no probe DB
+			return grabBannerSimple(ctx, host, port, timeout)
+		}
+	}
+
+	probes := probeDB.ProbesForPort(port, "TCP")
+	if len(probes) == 0 {
+		return grabBannerSimple(ctx, host, port, timeout)
+	}
+
+	for _, probe := range probes {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		sv, err := sendProbe(ctx, host, port, probe, timeout)
+		if err != nil {
+			continue
+		}
+		if sv != nil {
+			return sv, nil
+		}
+	}
+
+	// No probe matched — try simple banner grab as last resort
+	return grabBannerSimple(ctx, host, port, timeout)
+}
+
+// GrabBanners performs service version detection on all open ports in a scan result.
+// If opts.ProbeFile is set, probes are loaded from that file; otherwise the
+// embedded database is used.
+func GrabBanners(ctx context.Context, host string, result *ScanResult, opts ScanOptions) []ServiceVersion {
+	db, err := loadProbeDB(opts.ProbeFile)
+	if err != nil {
+		db = nil // will fall back to simple grabs
+	}
+
+	var versions []ServiceVersion
+	for _, p := range result.Ports {
+		if !p.Open {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		sv, err := GrabBanner(ctx, host, p.Port, opts.Timeout, db)
+		if err != nil {
+			continue
+		}
+		if sv != nil && (sv.Banner != "" || sv.Service != "") {
+			versions = append(versions, *sv)
+		}
+	}
+	return versions
+}
+
+// loadProbeDB loads the probe database from a file or returns the embedded default.
+func loadProbeDB(probeFile string) (*probedb.ServiceProbeDB, error) {
+	if probeFile != "" {
+		return probedb.LoadServiceProbesFile(probeFile)
+	}
+	return DefaultProbeDB()
+}
+
+// sendProbe sends a single probe to a host:port and checks matches.
+func sendProbe(ctx context.Context, host string, port int, probe probedb.ServiceProbe, timeout time.Duration) (*ServiceVersion, error) {
+	waitMS := probe.TotalWaitMS
+	if waitMS == 0 {
+		waitMS = 5000
+	}
+	probeTimeout := time.Duration(waitMS) * time.Millisecond
+	if probeTimeout > timeout {
+		probeTimeout = timeout
+	}
+
+	d := net.Dialer{Timeout: probeTimeout}
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(probeTimeout)
+	}
+
+	// Send probe string (NULL probe sends nothing)
+	if len(probe.ProbeString) > 0 {
+		conn.SetWriteDeadline(deadline)
+		if _, err := conn.Write(probe.ProbeString); err != nil {
+			return nil, err
+		}
+	}
+
+	// Read response
+	conn.SetReadDeadline(deadline)
+	reader := bufio.NewReaderSize(conn, 4096)
+	buf := make([]byte, 4096)
+	n, _ := reader.Read(buf)
+	if n == 0 {
+		return nil, nil // no response
+	}
+
+	response := buf[:n]
+	responseStr := string(response)
+
+	// Try matches first (hard matches are definitive)
+	for _, m := range probe.Matches {
+		submatches := m.Pattern.FindStringSubmatch(responseStr)
+		if submatches != nil {
+			vi := m.VersionInfo.Apply(submatches)
+			return &ServiceVersion{
+				Port:        port,
+				Service:     m.Service,
+				Banner:      strings.TrimSpace(responseStr),
+				ProductName: vi.ProductName,
+				Version:     vi.Version,
+				Info:        vi.Info,
+				OS:          vi.OS,
+				DeviceType:  vi.DeviceType,
+				CPE:         vi.CPE,
+			}, nil
+		}
+	}
+
+	// Try soft matches (less confident, keep trying other probes)
+	for _, m := range probe.SoftMatches {
+		submatches := m.Pattern.FindStringSubmatch(responseStr)
+		if submatches != nil {
+			vi := m.VersionInfo.Apply(submatches)
+			return &ServiceVersion{
+				Port:        port,
+				Service:     m.Service,
+				Banner:      strings.TrimSpace(responseStr),
+				ProductName: vi.ProductName,
+				Version:     vi.Version,
+				Info:        vi.Info,
+				OS:          vi.OS,
+				DeviceType:  vi.DeviceType,
+				CPE:         vi.CPE,
+			}, nil
+		}
+	}
+
+	return nil, nil // no match
+}
+
+// grabBannerSimple is the fallback banner grabber when no probe database is available.
+func grabBannerSimple(ctx context.Context, host string, port int, timeout time.Duration) (*ServiceVersion, error) {
 	d := net.Dialer{Timeout: timeout}
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
@@ -29,18 +195,15 @@ func GrabBanner(ctx context.Context, host string, port int, timeout time.Duratio
 	}
 	defer conn.Close()
 
-	// Set read deadline
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		deadline = time.Now().Add(timeout)
 	}
 	conn.SetReadDeadline(deadline)
 
-	// Read banner (first line or up to 4KB)
 	reader := bufio.NewReaderSize(conn, 4096)
 	banner, err := reader.ReadString('\n')
 	if err != nil {
-		// Some services don't send a newline — read what we can
 		if len(banner) == 0 {
 			buf := make([]byte, 4096)
 			n, _ := reader.Read(buf)
@@ -50,74 +213,31 @@ func GrabBanner(ctx context.Context, host string, port int, timeout time.Duratio
 
 	banner = strings.TrimSpace(banner)
 	if banner == "" {
-		// Try sending a probe for services that need stimulation
-		banner = probeService(ctx, conn, port, deadline)
+		// Try sending a basic probe
+		conn.SetWriteDeadline(deadline)
+		conn.Write([]byte("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"))
+		conn.SetReadDeadline(deadline)
+		buf := make([]byte, 4096)
+		n, _ := reader.Read(buf)
+		banner = strings.TrimSpace(string(buf[:n]))
+	}
+
+	if banner == "" {
+		return nil, nil
 	}
 
 	sv := &ServiceVersion{
 		Port:    port,
 		Banner:  banner,
-		Service: identifyService(port, banner),
-		Version: extractVersion(banner),
+		Service: identifyServiceSimple(port, banner),
+		Version: extractVersionSimple(banner),
 	}
 
 	return sv, nil
 }
 
-// GrabBanners performs banner grabbing on all open ports in a scan result.
-func GrabBanners(ctx context.Context, host string, result *ScanResult, timeout time.Duration) []ServiceVersion {
-	var versions []ServiceVersion
-	for _, p := range result.Ports {
-		if !p.Open {
-			continue
-		}
-		if ctx.Err() != nil {
-			break
-		}
-		sv, err := GrabBanner(ctx, host, p.Port, timeout)
-		if err != nil {
-			continue
-		}
-		if sv.Banner != "" || sv.Service != "" {
-			versions = append(versions, *sv)
-		}
-	}
-	return versions
-}
-
-// probeService sends a protocol-specific probe for services that don't
-// send banners on connect (HTTP, etc.).
-func probeService(ctx context.Context, conn net.Conn, port int, deadline time.Time) string {
-	if ctx.Err() != nil {
-		return ""
-	}
-
-	var probe string
-	switch port {
-	case 80, 443, 8080, 8443, 8000, 8008, 8081, 8888, 3000:
-		probe = "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"
-	case 6379:
-		probe = "PING\r\n"
-	case 11211:
-		probe = "version\r\n"
-	case 27017:
-		// MongoDB wire protocol hello
-		return ""
-	default:
-		probe = "\r\n"
-	}
-
-	conn.SetWriteDeadline(deadline)
-	conn.Write([]byte(probe))
-
-	conn.SetReadDeadline(deadline)
-	reader := bufio.NewReaderSize(conn, 4096)
-	response, _ := reader.ReadString('\n')
-	return strings.TrimSpace(response)
-}
-
-// identifyService identifies the service from the banner text.
-func identifyService(port int, banner string) string {
+// identifyServiceSimple identifies the service from the banner text (fallback).
+func identifyServiceSimple(port int, banner string) string {
 	lbanner := strings.ToLower(banner)
 
 	switch {
@@ -148,18 +268,16 @@ func identifyService(port int, banner string) string {
 	case strings.HasPrefix(banner, "+PONG"):
 		return "redis"
 	default:
-		// Fall back to port-based lookup
 		return LookupService(port)
 	}
 }
 
-// extractVersion tries to extract a version string from a banner.
-func extractVersion(banner string) string {
+// extractVersionSimple tries to extract a version string from a banner (fallback).
+func extractVersionSimple(banner string) string {
 	if banner == "" {
 		return ""
 	}
 
-	// SSH: "SSH-2.0-OpenSSH_8.9p1"
 	if strings.HasPrefix(banner, "SSH-") {
 		parts := strings.SplitN(banner, " ", 2)
 		if len(parts) > 0 {
@@ -167,7 +285,6 @@ func extractVersion(banner string) string {
 		}
 	}
 
-	// HTTP: "HTTP/1.1 200 OK" — the version is in the Server header, not the status line
 	if strings.HasPrefix(banner, "HTTP/") {
 		return banner
 	}

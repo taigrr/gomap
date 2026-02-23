@@ -34,6 +34,11 @@ type ScanOptions struct {
 
 	// Ports specifies custom ports to scan. If nil, the default port list is used.
 	Ports []int
+
+	// ProbeFile is an optional path to an nmap-service-probes file.
+	// If set, probes are loaded from this file instead of the embedded database.
+	// If empty, the embedded probe database is used.
+	ProbeFile string
 }
 
 func (o *ScanOptions) defaults() {

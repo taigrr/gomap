@@ -25,6 +25,7 @@ var (
 	osDetect   bool
 	bannerGrab bool
 	timing     string
+	probeFile  string
 	version    = "dev"
 )
 
@@ -50,6 +51,7 @@ func main() {
 	rootCmd.Flags().BoolVarP(&osDetect, "os", "O", false, "Enable OS detection (requires root)")
 	rootCmd.Flags().BoolVarP(&bannerGrab, "version", "V", false, "Enable service version detection (banner grabbing)")
 	rootCmd.Flags().StringVarP(&timing, "timing", "T", "", "Timing template: T0-T5 or paranoid/sneaky/polite/normal/aggressive/insane")
+	rootCmd.Flags().StringVar(&probeFile, "service-probes", "", "Path to nmap-service-probes file (default: embedded database)")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -73,8 +75,9 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := gomap.ScanOptions{
-		FastScan: fast,
-		ScanType: st,
+		FastScan:  fast,
+		ScanType:  st,
+		ProbeFile: probeFile,
 	}
 
 	// Apply timing template
@@ -131,13 +134,18 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Banner grabbing
 	if bannerGrab && result != nil && len(args) > 0 {
-		versions := gomap.GrabBanners(ctx, args[0], result, opts.Timeout)
+		versions := gomap.GrabBanners(ctx, args[0], result, opts)
 		if len(versions) > 0 && !jsonOut && !xmlOut && !grepOut {
 			fmt.Println("\nService Versions:")
 			for _, v := range versions {
-				if v.Banner != "" {
-					fmt.Printf("  %d/%s: %s\n", v.Port, v.Service, v.Banner)
+				svc := v.Service
+				if v.ProductName != "" {
+					svc = v.ProductName
 				}
+				if v.Version != "" {
+					svc += " " + v.Version
+				}
+				fmt.Printf("  %d/%s: %s\n", v.Port, svc, v.Banner)
 			}
 		}
 	}
