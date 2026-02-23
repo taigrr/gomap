@@ -48,6 +48,13 @@ var (
 	outputGrep   string
 	outputAll    string
 	appendOutput bool
+	noPing       bool
+	inputFile    string
+	excludeFile  string
+	listScan     bool
+	badSum       bool
+	ttl          int
+	dataLength   int
 	version      = "dev"
 )
 
@@ -63,7 +70,7 @@ func main() {
 	}
 
 	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
-	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, udp")
+	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, maimon, udp")
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().BoolVarP(&xmlOut, "xml", "x", false, "Output as nmap-compatible XML")
 	rootCmd.Flags().BoolVarP(&grepOut, "grep", "g", false, "Output in grepable format")
@@ -95,6 +102,13 @@ func main() {
 	rootCmd.Flags().StringVar(&outputGrep, "oG", "", "Grepable output to file")
 	rootCmd.Flags().StringVar(&outputAll, "oA", "", "Output in all formats (basename)")
 	rootCmd.Flags().BoolVar(&appendOutput, "append-output", false, "Append to output files")
+	rootCmd.Flags().BoolVar(&noPing, "Pn", false, "Skip host discovery, treat all hosts as online")
+	rootCmd.Flags().StringVarP(&inputFile, "input-file", "i", "", "Read targets from file (one per line)")
+	rootCmd.Flags().StringVar(&excludeFile, "excludefile", "", "Read exclude targets from file")
+	rootCmd.Flags().BoolVar(&listScan, "list-scan", false, "List scan — resolve targets without scanning")
+	rootCmd.Flags().BoolVar(&badSum, "badsum", false, "Send packets with bad checksums")
+	rootCmd.Flags().IntVar(&ttl, "ttl", 0, "Set IP time-to-live on outgoing packets")
+	rootCmd.Flags().IntVar(&dataLength, "data-length", 0, "Pad packets with random data to given length")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -106,6 +120,46 @@ func run(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	startTime := time.Now()
+
+	// Load targets from file if specified
+	if inputFile != "" {
+		fileTargets, err := gomap.LoadTargetsFromFile(inputFile)
+		if err != nil {
+			return err
+		}
+		args = append(args, fileTargets...)
+	}
+
+	// Load excludes from file
+	if excludeFile != "" {
+		fileExcludes, err := gomap.LoadExcludesFromFile(excludeFile)
+		if err != nil {
+			return err
+		}
+		if excludeHosts != "" {
+			excludeHosts += "," + strings.Join(fileExcludes, ",")
+		} else {
+			excludeHosts = strings.Join(fileExcludes, ",")
+		}
+	}
+
+	// List scan mode
+	if listScan {
+		targets := args
+		results, err := gomap.ListScan(targets, noDNS)
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			if r.Hostname != "" && r.Hostname != r.IP {
+				fmt.Printf("%s (%s)\n", r.Hostname, r.IP)
+			} else {
+				fmt.Println(r.IP)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "%d targets listed\n", len(results))
+		return nil
+	}
 
 	// Script list mode
 	if scriptList {
@@ -140,6 +194,10 @@ func run(cmd *cobra.Command, args []string) error {
 		AlwaysDNS:   alwaysDNS,
 		Verbose:     verbose,
 		SourcePort:  sourcePort,
+		NoPing:      noPing,
+		BadSum:      badSum,
+		TTL:         ttl,
+		DataLength:  dataLength,
 	}
 
 	// Parse port specification
@@ -432,10 +490,12 @@ func parseScanType(s string) (gomap.ScanType, error) {
 		return gomap.ACKScan, nil
 	case "window":
 		return gomap.WindowScan, nil
+	case "maimon":
+		return gomap.MaimonScan, nil
 	case "udp":
 		return gomap.UDPScan, nil
 	default:
-		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, udp)", s)
+		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, maimon, udp)", s)
 	}
 }
 

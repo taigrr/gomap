@@ -37,6 +37,11 @@ const (
 	// Linux only, requires raw socket privileges.
 	WindowScan
 
+	// MaimonScan sends a TCP FIN/ACK packet. Similar to FIN scan but some
+	// BSD-derived systems drop the packet for open ports instead of responding.
+	// Linux only, requires raw socket privileges.
+	MaimonScan
+
 	// UDPScan sends UDP packets and interprets ICMP responses.
 	// Works cross-platform but may require privileges for ICMP listening.
 	UDPScan
@@ -59,6 +64,8 @@ func (s ScanType) String() string {
 		return "ack"
 	case WindowScan:
 		return "window"
+	case MaimonScan:
+		return "maimon"
 	case UDPScan:
 		return "udp"
 	default:
@@ -69,7 +76,7 @@ func (s ScanType) String() string {
 // RequiresRawSocket returns true if the scan type requires raw socket access.
 func (s ScanType) RequiresRawSocket() bool {
 	switch s {
-	case SYNScan, FINScan, XmasScan, NullScan, ACKScan, WindowScan:
+	case SYNScan, FINScan, XmasScan, NullScan, ACKScan, WindowScan, MaimonScan:
 		return true
 	default:
 		return false
