@@ -46,17 +46,15 @@ func scanPortRaw(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 
 	select {
 	case <-ctx.Done():
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
-			result.State = PortClosed
+			result.setStateReason(PortClosed, "reset")
 		} else {
-			result.State = PortOpenFiltered
-			result.Open = true
+			result.setStateReason(PortOpenFiltered, "no-response")
 		}
 	case <-time.After(timeout):
-		result.State = PortOpenFiltered
-		result.Open = true
+		result.setStateReason(PortOpenFiltered, "no-response")
 	}
 
 	resultCh <- result
@@ -86,15 +84,15 @@ func scanPortACK(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 
 	select {
 	case <-ctx.Done():
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
-			result.State = PortUnfiltered
+			result.setStateReason(PortUnfiltered, "reset")
 		} else {
-			result.State = PortFiltered
+			result.setStateReason(PortFiltered, "no-response")
 		}
 	case <-time.After(timeout):
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	}
 
 	resultCh <- result
@@ -124,20 +122,19 @@ func scanPortWindow(ctx context.Context, resultCh chan<- PortResult, hostname, s
 
 	select {
 	case <-ctx.Done():
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
 			if resp.window > 0 {
-				result.State = PortOpen
-				result.Open = true
+				result.setStateReason(PortOpen, "window-nonzero")
 			} else {
-				result.State = PortClosed
+				result.setStateReason(PortClosed, "reset")
 			}
 		} else {
-			result.State = PortFiltered
+			result.setStateReason(PortFiltered, "no-response")
 		}
 	case <-time.After(timeout):
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	}
 
 	resultCh <- result

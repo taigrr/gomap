@@ -27,12 +27,28 @@ var (
 	bannerGrab bool
 	timing     string
 	probeFile  string
-	traceroute  bool
-	preferIPv6  bool
-	decoySpec   string
-	scriptSpec  string
-	scriptList  bool
-	version     = "dev"
+	traceroute   bool
+	preferIPv6   bool
+	decoySpec    string
+	scriptSpec   string
+	scriptList   bool
+	portSpec     string
+	openOnly     bool
+	reason       bool
+	excludeHosts string
+	scanDelay    time.Duration
+	maxRetries   int
+	hostTimeout  time.Duration
+	noDNS        bool
+	alwaysDNS    bool
+	verbose      bool
+	sourcePort   int
+	outputNormal string
+	outputXML    string
+	outputGrep   string
+	outputAll    string
+	appendOutput bool
+	version      = "dev"
 )
 
 func main() {
@@ -63,6 +79,22 @@ func main() {
 	rootCmd.Flags().StringVarP(&decoySpec, "decoys", "D", "", "Decoy IPs: RND,RND,ME,RND or ip1,ip2,ME")
 	rootCmd.Flags().StringVar(&scriptSpec, "script", "", "Run scripts: default, safe, or script IDs (http-title,ssl-cert)")
 	rootCmd.Flags().BoolVar(&scriptList, "script-list", false, "List available scripts and exit")
+	rootCmd.Flags().StringVarP(&portSpec, "ports", "p", "", "Port specification: 80,443 or 1-1024 or T:80,U:53")
+	rootCmd.Flags().BoolVar(&openOnly, "open", false, "Only show open ports")
+	rootCmd.Flags().BoolVar(&reason, "reason", false, "Show the reason each port is in its state")
+	rootCmd.Flags().StringVar(&excludeHosts, "exclude", "", "Comma-separated hosts/CIDRs to exclude")
+	rootCmd.Flags().DurationVar(&scanDelay, "scan-delay", 0, "Minimum delay between probes (e.g. 100ms)")
+	rootCmd.Flags().IntVar(&maxRetries, "max-retries", 0, "Maximum probe retransmissions")
+	rootCmd.Flags().DurationVar(&hostTimeout, "host-timeout", 0, "Maximum time per host (e.g. 30s)")
+	rootCmd.Flags().BoolVarP(&noDNS, "no-dns", "n", false, "Never do DNS resolution")
+	rootCmd.Flags().BoolVarP(&alwaysDNS, "dns", "R", false, "Always resolve DNS")
+	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	rootCmd.Flags().IntVar(&sourcePort, "source-port", 0, "Use given port number for scans")
+	rootCmd.Flags().StringVar(&outputNormal, "oN", "", "Normal output to file")
+	rootCmd.Flags().StringVar(&outputXML, "oX", "", "XML output to file")
+	rootCmd.Flags().StringVar(&outputGrep, "oG", "", "Grepable output to file")
+	rootCmd.Flags().StringVar(&outputAll, "oA", "", "Output in all formats (basename)")
+	rootCmd.Flags().BoolVar(&appendOutput, "append-output", false, "Append to output files")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -95,10 +127,53 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := gomap.ScanOptions{
-		FastScan:  fast,
-		ScanType:  st,
-		ProbeFile:  probeFile,
-		PreferIPv6: preferIPv6,
+		FastScan:    fast,
+		ScanType:    st,
+		ProbeFile:   probeFile,
+		PreferIPv6:  preferIPv6,
+		OpenOnly:    openOnly,
+		Reason:      reason,
+		ScanDelay:   scanDelay,
+		MaxRetries:  maxRetries,
+		HostTimeout: hostTimeout,
+		NoDNS:       noDNS,
+		AlwaysDNS:   alwaysDNS,
+		Verbose:     verbose,
+		SourcePort:  sourcePort,
+	}
+
+	// Parse port specification
+	if portSpec != "" {
+		ports, err := gomap.ParsePortRange(portSpec)
+		if err != nil {
+			return fmt.Errorf("parsing ports: %w", err)
+		}
+		opts.Ports = ports
+	}
+
+	// Parse exclude hosts
+	if excludeHosts != "" {
+		opts.ExcludeHosts = strings.Split(excludeHosts, ",")
+	}
+
+	// Configure file output
+	outCfg := &gomap.OutputConfig{Append: appendOutput}
+	if outputAll != "" {
+		outCfg.NormalFile = outputAll + ".nmap"
+		outCfg.XMLFile = outputAll + ".xml"
+		outCfg.GrepFile = outputAll + ".gnmap"
+	}
+	if outputNormal != "" {
+		outCfg.NormalFile = outputNormal
+	}
+	if outputXML != "" {
+		outCfg.XMLFile = outputXML
+	}
+	if outputGrep != "" {
+		outCfg.GrepFile = outputGrep
+	}
+	if outCfg.HasFileOutput() {
+		opts.Output = outCfg
 	}
 
 	// Parse decoys
@@ -144,7 +219,7 @@ func run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		clearProgress()
-		return printResults(nil, results, st, startTime)
+		return printResults(nil, results, st, startTime, opts)
 	}
 
 	if len(args) == 0 {
@@ -153,7 +228,7 @@ func run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		clearProgress()
-		return printResults(nil, results, st, startTime)
+		return printResults(nil, results, st, startTime, opts)
 	}
 
 	result, err := gomap.ScanHost(ctx, args[0], opts)
@@ -162,7 +237,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	clearProgress()
 
-	if err := printResults(result, nil, st, startTime); err != nil {
+	if err := printResults(result, nil, st, startTime, opts); err != nil {
 		return err
 	}
 
@@ -370,28 +445,40 @@ func clearProgress() {
 	}
 }
 
-func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult, st gomap.ScanType, startTime time.Time) error {
-	switch {
-	case xmlOut:
-		var data []byte
+func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult, st gomap.ScanType, startTime time.Time, opts gomap.ScanOptions) error {
+	// Generate all output formats needed
+	var normalOut, grepableOut string
+	var xmlData []byte
+
+	if single != nil {
+		normalOut = single.String()
+		grepableOut = single.ToGrepable()
 		var err error
-		if single != nil {
-			data, err = single.ToXML(st, startTime, version)
-		} else {
-			data, err = multi.ToXML(st, startTime, version)
-		}
+		xmlData, err = single.ToXML(st, startTime, version)
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(data))
-
-	case grepOut:
-		if single != nil {
-			fmt.Print(single.ToGrepable())
-		} else {
-			fmt.Print(multi.ToGrepable())
+	} else {
+		normalOut = multi.String()
+		grepableOut = multi.ToGrepable()
+		var err error
+		xmlData, err = multi.ToXML(st, startTime, version)
+		if err != nil {
+			return err
 		}
+	}
 
+	// Add reason column to normal output if requested
+	if opts.Reason && !jsonOut && !xmlOut && !grepOut {
+		normalOut = addReasonToOutput(single, multi)
+	}
+
+	// Print to stdout
+	switch {
+	case xmlOut:
+		fmt.Println(string(xmlData))
+	case grepOut:
+		fmt.Print(grepableOut)
 	case jsonOut:
 		var out string
 		var err error
@@ -404,14 +491,43 @@ func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult, st goma
 			return err
 		}
 		fmt.Println(out)
-
 	default:
-		if single != nil {
-			fmt.Print(single.String())
-		} else {
-			fmt.Print(multi.String())
-		}
+		fmt.Print(normalOut)
+	}
+
+	// Write to files
+	if opts.Output != nil {
+		return opts.Output.WriteAll(normalOut, xmlData, grepableOut)
 	}
 
 	return nil
+}
+
+func addReasonToOutput(single *gomap.ScanResult, multi gomap.RangeScanResult) string {
+	var results []*gomap.ScanResult
+	if single != nil {
+		results = []*gomap.ScanResult{single}
+	} else {
+		results = multi
+	}
+
+	var b strings.Builder
+	for _, r := range results {
+		fmt.Fprintf(&b, "Scan report for %s\n", r.Hostname)
+		fmt.Fprintf(&b, "%-10s %-12s %-15s %s\n", "PORT", "STATE", "SERVICE", "REASON")
+		for _, p := range r.Ports {
+			reasonStr := p.Reason
+			if reasonStr == "" {
+				reasonStr = "unknown"
+			}
+			fmt.Fprintf(&b, "%-10s %-12s %-15s %s\n",
+				fmt.Sprintf("%d/tcp", p.Port),
+				p.State.String(),
+				p.Service,
+				reasonStr,
+			)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }

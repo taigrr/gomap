@@ -70,6 +70,26 @@ func TestCreateHostRangeV6(t *testing.T) {
 	}
 }
 
+func TestBuildExcludeSet(t *testing.T) {
+	set := buildExcludeSet([]string{"192.168.1.5", "10.0.0.0/30"})
+	if !set["192.168.1.5"] {
+		t.Error("expected 192.168.1.5 in exclude set")
+	}
+	if !set["10.0.0.1"] {
+		t.Error("expected 10.0.0.1 in exclude set from CIDR")
+	}
+	if set["10.0.0.5"] {
+		t.Error("10.0.0.5 should not be in /30 exclude set")
+	}
+}
+
+func TestBuildExcludeSetEmpty(t *testing.T) {
+	set := buildExcludeSet(nil)
+	if set != nil {
+		t.Error("nil input should return nil")
+	}
+}
+
 func TestIpProtocol(t *testing.T) {
 	if got := ipProtocol("192.168.1.1", "tcp"); got != "ip4:tcp" {
 		t.Errorf("ipProtocol(v4, tcp) = %q", got)
