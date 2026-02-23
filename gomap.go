@@ -23,6 +23,14 @@ type PortResult struct {
 	Open    bool
 	State   PortState
 	Service string
+	Reason  string
+}
+
+// setStateReason is a helper to set state and reason together.
+func (p *PortResult) setStateReason(state PortState, reason string) {
+	p.State = state
+	p.Reason = reason
+	p.Open = state == PortOpen || state == PortOpenFiltered
 }
 
 // RangeScanResult contains results for multiple hosts.

@@ -18,32 +18,31 @@ func scanPortSyn(ctx context.Context, resultCh chan<- PortResult, protocol, host
 	time.Sleep(5 * time.Millisecond)
 
 	if ctx.Err() != nil {
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 		resultCh <- result
 		return
 	}
 
 	err := sendTCPPacket(laddr, hostname, sport, uint16(port), tcpSYN)
 	if err != nil {
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 		resultCh <- result
 		return
 	}
 
 	select {
 	case <-ctx.Done():
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	case resp := <-responseCh:
 		if resp.flags&tcpSYN != 0 && resp.flags&tcpACK != 0 {
-			result.Open = true
-			result.State = PortOpen
+			result.setStateReason(PortOpen, "syn-ack")
 		} else if resp.flags&tcpRST != 0 {
-			result.State = PortClosed
+			result.setStateReason(PortClosed, "reset")
 		} else {
-			result.State = PortFiltered
+			result.setStateReason(PortFiltered, "no-response")
 		}
 	case <-time.After(timeout):
-		result.State = PortFiltered
+		result.setStateReason(PortFiltered, "no-response")
 	}
 
 	resultCh <- result
