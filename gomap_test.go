@@ -88,3 +88,64 @@ func TestScanResultOpenPorts(t *testing.T) {
 		t.Errorf("expected 2 open ports, got %d", len(open))
 	}
 }
+
+func TestScanTypeString(t *testing.T) {
+	tests := []struct {
+		st   ScanType
+		want string
+	}{
+		{ConnectScan, "connect"},
+		{SYNScan, "syn"},
+		{FINScan, "fin"},
+		{XmasScan, "xmas"},
+		{NullScan, "null"},
+		{ACKScan, "ack"},
+		{WindowScan, "window"},
+		{UDPScan, "udp"},
+	}
+	for _, tt := range tests {
+		if got := tt.st.String(); got != tt.want {
+			t.Errorf("ScanType(%d).String() = %q, want %q", tt.st, got, tt.want)
+		}
+	}
+}
+
+func TestScanTypeRequiresRawSocket(t *testing.T) {
+	if ConnectScan.RequiresRawSocket() {
+		t.Error("ConnectScan should not require raw socket")
+	}
+	if UDPScan.RequiresRawSocket() {
+		t.Error("UDPScan should not require raw socket")
+	}
+	if !SYNScan.RequiresRawSocket() {
+		t.Error("SYNScan should require raw socket")
+	}
+	if !FINScan.RequiresRawSocket() {
+		t.Error("FINScan should require raw socket")
+	}
+}
+
+func TestPortStateString(t *testing.T) {
+	tests := []struct {
+		ps   PortState
+		want string
+	}{
+		{PortOpen, "open"},
+		{PortClosed, "closed"},
+		{PortFiltered, "filtered"},
+		{PortUnfiltered, "unfiltered"},
+		{PortOpenFiltered, "open|filtered"},
+	}
+	for _, tt := range tests {
+		if got := tt.ps.String(); got != tt.want {
+			t.Errorf("PortState(%d).String() = %q, want %q", tt.ps, got, tt.want)
+		}
+	}
+}
+
+func TestLookupUDPService(t *testing.T) {
+	svc := LookupUDPService(53)
+	if svc == "unknown" {
+		t.Error("expected DNS service for UDP port 53")
+	}
+}

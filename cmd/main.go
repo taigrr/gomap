@@ -20,6 +20,7 @@ var (
 	cidr      string
 	topPorts  int
 	discovery bool
+	osDetect  bool
 	version   = "dev"
 )
 
@@ -40,6 +41,7 @@ func main() {
 	rootCmd.Flags().StringVarP(&cidr, "cidr", "c", "", "Scan a CIDR range instead of a single host")
 	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
 	rootCmd.Flags().BoolVarP(&discovery, "ping", "P", false, "Host discovery only (no port scan)")
+	rootCmd.Flags().BoolVarP(&osDetect, "os", "O", false, "Enable OS detection (requires root)")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -101,7 +103,28 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	clearProgress()
-	return printResults(result, nil)
+
+	if err := printResults(result, nil); err != nil {
+		return err
+	}
+
+	// OS detection
+	if osDetect && result != nil {
+		openPort, closedPort := findOSDetectPorts(result)
+		if openPort == 0 {
+			fmt.Fprintln(os.Stderr, "OS detection requires at least one open port")
+		} else {
+			osResult, err := gomap.DetectOS(ctx, args[0], openPort, closedPort, opts)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "OS detection failed: %v\n", err)
+			} else {
+				fmt.Println("\nOS Fingerprint:")
+				fmt.Print(osResult.Raw)
+			}
+		}
+	}
+
+	return nil
 }
 
 func clearProgress() {
@@ -144,6 +167,21 @@ func runDiscovery(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "\n%d hosts up out of %d scanned\n", alive, len(results))
 	}
 	return nil
+}
+
+func findOSDetectPorts(result *gomap.ScanResult) (openPort, closedPort int) {
+	for _, p := range result.Ports {
+		if p.Open && openPort == 0 {
+			openPort = p.Port
+		}
+		if !p.Open && closedPort == 0 {
+			closedPort = p.Port
+		}
+		if openPort != 0 && closedPort != 0 {
+			break
+		}
+	}
+	return
 }
 
 func parseScanType(s string) (gomap.ScanType, error) {

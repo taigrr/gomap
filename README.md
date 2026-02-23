@@ -23,17 +23,32 @@ go install github.com/taigrr/gomap/cmd@latest
 ## CLI Usage
 
 ```bash
-# Scan a single host (common ports)
+# Scan a single host (top ports)
 gomap -f example.com
 
-# Full scan
+# Full scan (all known ports)
 gomap example.com
 
 # Scan a CIDR range
 gomap -c 192.168.1.0/24 -f
 
-# SYN stealth scan (Linux, requires root)
-sudo gomap -s example.com
+# Top 100 ports only
+gomap -t 100 example.com
+
+# Different scan types (Linux, requires root)
+sudo gomap -s syn example.com     # SYN stealth scan
+sudo gomap -s fin example.com     # FIN scan
+sudo gomap -s xmas example.com    # Xmas tree scan
+sudo gomap -s null example.com    # Null scan
+sudo gomap -s ack example.com     # ACK scan (firewall mapping)
+sudo gomap -s window example.com  # Window scan
+gomap -s udp example.com          # UDP scan
+
+# Host discovery (ping sweep)
+gomap -P -c 192.168.1.0/24
+
+# OS detection
+sudo gomap -O example.com
 
 # JSON output
 gomap -j example.com
@@ -113,8 +128,17 @@ hosts := gomap.CreateHostRange("192.168.1.0/24")
 | Feature | Linux | macOS | Windows |
 |---------|-------|-------|---------|
 | TCP connect scan | Yes | Yes | Yes |
-| SYN stealth scan | Yes | No | No |
-| ARP table | Yes | No | No |
+| SYN stealth scan | Yes | No* | No* |
+| FIN/Xmas/Null scan | Yes | No* | No* |
+| ACK/Window scan | Yes | No* | No* |
+| UDP scan | Yes | Yes | Yes |
+| Host discovery (ICMP) | Yes | Yes** | Yes** |
+| Host discovery (TCP) | Yes | Yes | Yes |
+| ARP discovery | Yes | No | No |
+| OS detection | Yes | No | No |
+
+\* Falls back to connect scan on non-Linux platforms
+\** May require elevated privileges
 
 ## Regenerating Service Data
 
@@ -128,16 +152,18 @@ This fetches the latest IANA CSV and regenerates `services_generated.go`.
 
 ## Roadmap
 
-- [ ] UDP scanning
+- [x] All TCP scan types (SYN, FIN, Xmas, Null, ACK, Window)
+- [x] UDP scanning
+- [x] Host discovery (ICMP, TCP SYN/ACK, UDP, ARP)
+- [x] OS fingerprinting (TCP/IP stack analysis)
 - [ ] Service version detection (banner grabbing)
-- [ ] OS fingerprinting
-- [ ] Additional scan types (FIN, XMAS, NULL, ACK, Window)
-- [ ] Host discovery (ICMP, TCP/UDP ping)
+- [ ] OS fingerprint database matching
 - [ ] Timing templates (T0-T5)
 - [ ] XML output (nmap-compatible)
 - [ ] IPv6 support
 - [ ] Traceroute
 - [ ] MAC address vendor lookup
+- [ ] NSE-style scripting
 
 ## License
 
