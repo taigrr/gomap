@@ -26,6 +26,7 @@ var (
 	bannerGrab bool
 	timing     string
 	probeFile  string
+	traceroute bool
 	version    = "dev"
 )
 
@@ -52,6 +53,7 @@ func main() {
 	rootCmd.Flags().BoolVarP(&bannerGrab, "version", "V", false, "Enable service version detection (banner grabbing)")
 	rootCmd.Flags().StringVarP(&timing, "timing", "T", "", "Timing template: T0-T5 or paranoid/sneaky/polite/normal/aggressive/insane")
 	rootCmd.Flags().StringVar(&probeFile, "service-probes", "", "Path to nmap-service-probes file (default: embedded database)")
+	rootCmd.Flags().BoolVar(&traceroute, "traceroute", false, "Trace the route to the host")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -160,9 +162,48 @@ func run(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "OS detection failed: %v\n", err)
 			} else if !xmlOut {
-				fmt.Println("\nOS Fingerprint:")
-				fmt.Print(osResult.Raw)
+				if len(osResult.Matches) > 0 {
+					fmt.Println("\nOS Detection:")
+					for i, m := range osResult.Matches {
+						if i >= 5 {
+							break
+						}
+						fmt.Printf("  %s (%.0f%% accuracy)", m.Name, m.Accuracy*100)
+						if m.Family != "" {
+							fmt.Printf(" [%s", m.Family)
+							if m.Generation != "" {
+								fmt.Printf(" %s", m.Generation)
+							}
+							fmt.Print("]")
+						}
+						fmt.Println()
+					}
+				} else {
+					fmt.Println("\nOS Fingerprint (no DB match):")
+					fmt.Print(osResult.Raw)
+				}
 			}
+		}
+	}
+
+	// Traceroute
+	if traceroute && len(args) > 0 {
+		trOpts := gomap.TracerouteOptions{
+			Timeout: 2 * time.Second,
+			Port:    80,
+		}
+		if timing != "" {
+			tt, _ := gomap.ParseTimingTemplate(timing)
+			if tt <= gomap.TimingPolite {
+				trOpts.Timeout = 5 * time.Second
+			}
+		}
+		tr, err := gomap.Traceroute(ctx, args[0], trOpts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Traceroute failed: %v\n", err)
+		} else if !xmlOut && !grepOut {
+			fmt.Println()
+			fmt.Print(tr.String())
 		}
 	}
 
