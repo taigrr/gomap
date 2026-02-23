@@ -10,9 +10,9 @@ func TestLookupService(t *testing.T) {
 		port int
 		want string
 	}{
-		{22, "SSH Remote Login Protocol"},
+		{22, "The Secure Shell (SSH) Protocol"},
 		{80, "World Wide Web HTTP"},
-		{443, "HTTP protocol over TLS/SSL"},
+		{443, "http protocol over TLS/SSL"},
 		{99999, "unknown"},
 	}
 	for _, tt := range tests {

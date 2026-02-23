@@ -1,249 +1,65 @@
 package gomap
 
-// LookupService returns the service name for a given port number.
-// It checks the detailed list first, then the common list.
+//go:generate go run ./cmd/generate-services/ -o services_generated.go
+
+// LookupService returns the service name for a given TCP port number.
+// It checks the IANA registry first, then falls back to common ports.
 // Returns "unknown" if no service is found.
 func LookupService(port int) string {
-	if svc, ok := DetailedPorts[port]; ok {
-		return svc
-	}
-	if svc, ok := CommonPorts[port]; ok {
+	if svc, ok := IANATCPServices[port]; ok {
 		return svc
 	}
 	return "unknown"
 }
 
-// CommonPorts maps well-known port numbers to service names.
-// This is the "fast scan" list.
-var CommonPorts = map[int]string{
-	7:     "echo",
-	20:    "ftp",
-	21:    "ftp",
-	22:    "ssh",
-	23:    "telnet",
-	25:    "smtp",
-	43:    "whois",
-	50:    "IPSec",
-	51:    "IPSec",
-	53:    "dns",
-	67:    "dhcp",
-	68:    "dhcp",
-	69:    "TFTP",
-	80:    "http",
-	88:    "kerberos",
-	110:   "pop3",
-	111:   "rpc",
-	115:   "sftp",
-	119:   "nntp",
-	123:   "ntp",
-	137:   "netbios",
-	138:   "netbios",
-	139:   "netbios",
-	143:   "imap4",
-	156:   "sql server",
-	161:   "SNMP",
-	162:   "SNMP",
-	389:   "LDAP",
-	443:   "https",
-	513:   "rlogin",
-	540:   "uucp",
-	546:   "dhcpv6",
-	547:   "dhcpv6",
-	554:   "rtsp",
-	587:   "smtp",
-	873:   "rsync",
-	902:   "vmware",
-	989:   "ftps",
-	990:   "ftps",
-	1194:  "openvpn",
-	1725:  "steam",
-	1812:  "radius",
-	1813:  "radius",
-	2049:  "NFS",
-	2082:  "cpanel",
-	2083:  "cpanel",
-	3306:  "mysql",
-	3389:  "RDP",
-	5000:  "upnp",
-	5432:  "psql",
-	5500:  "vnc server",
-	5900:  "vnc server",
-	5938:  "teamviewer",
-	8000:  "http-alt",
-	8080:  "https-proxy",
-	8333:  "VMware Web Access",
-	8443:  "https-alt",
-	8998:  "I2P",
-	9030:  "Tor",
-	9050:  "Tor",
-	9051:  "Tor",
-	9150:  "Tor Browser",
-	9200:  "elasticsearch",
-	9418:  "git",
-	9987:  "Teamspeak 3 voice",
-	19999: "DNP",
-	23399: "Skype",
-	25565: "minecraft",
-	27017: "MongoDB",
-	28015: "Rust (Video Game)",
-	43594: "runescape",
-	43595: "runescape",
+// LookupUDPService returns the service name for a given UDP port number.
+func LookupUDPService(port int) string {
+	if svc, ok := IANAUDPServices[port]; ok {
+		return svc
+	}
+	return "unknown"
 }
 
-// DetailedPorts is an exhaustive map of port numbers to service names.
-// This is used for full (non-fast) scans.
-var DetailedPorts = map[int]string{
-	// Custom Ports
-	5550:  "vnc server",
-	5938:  "teamviewer",
-	25565: "minecraft",
-	24800: "synergy",
-	// Standard Ports
-	1:     "Port Service Multiplexer",
-	2:     "Management Utility",
-	3:     "Compression Process",
-	4:     "Unassigned",
-	5:     "Remote Job Entry",
-	7:     "Echo",
-	9:     "Discard",
-	11:    "Active Users",
-	13:    "Daytime (RFC 867)",
-	17:    "Quote of the Day",
-	18:    "Message Send Protocol",
-	19:    "Character Generator",
-	20:    "File Transfer [Default Data]",
-	21:    "File Transfer [Control]",
-	22:    "SSH Remote Login Protocol",
-	23:    "Telnet",
-	24:    "any private mail system",
-	25:    "Simple Mail Transfer",
-	27:    "NSW User System FE",
-	29:    "MSG ICP",
-	31:    "MSG Authentication",
-	33:    "Display Support Protocol",
-	35:    "any private printer server",
-	37:    "Time",
-	38:    "Route Access Protocol",
-	39:    "Resource Location Protocol",
-	42:    "Host Name Server",
-	43:    "WhoIs",
-	49:    "Login Host Protocol (TACACS)",
-	53:    "Domain Name Server",
-	67:    "Bootstrap Protocol Server",
-	68:    "Bootstrap Protocol Client",
-	69:    "Trivial File Transfer",
-	70:    "Gopher",
-	79:    "Finger",
-	80:    "World Wide Web HTTP",
-	88:    "Kerberos",
-	110:   "Post Office Protocol - Version 3",
-	111:   "SUN Remote Procedure Call",
-	113:   "Authentication Service",
-	119:   "Network News Transfer Protocol",
-	123:   "Network Time Protocol",
-	135:   "DCE endpoint resolution",
-	137:   "NETBIOS Name Service",
-	138:   "NETBIOS Datagram Service",
-	139:   "NETBIOS Session Service",
-	143:   "Internet Message Access Protocol",
-	161:   "SNMP",
-	162:   "SNMPTRAP",
-	179:   "Border Gateway Protocol",
-	194:   "Internet Relay Chat Protocol",
-	389:   "Lightweight Directory Access Protocol",
-	443:   "HTTP protocol over TLS/SSL",
-	445:   "Microsoft-DS",
-	464:   "kpasswd",
-	465:   "SMTPS",
-	500:   "ISAKMP",
-	512:   "Remote process execution",
-	513:   "Remote Login",
-	514:   "Remote Shell",
-	515:   "spooler",
-	520:   "extended file name server",
-	521:   "ripng",
-	523:   "IBM-DB2",
-	524:   "NCP",
-	530:   "rpc",
-	543:   "kerberos (v4/v5)",
-	544:   "krcmd",
-	546:   "DHCPv6 Client",
-	547:   "DHCPv6 Server",
-	548:   "AppleShare AFP over TCP",
-	554:   "Real Time Stream Control Protocol",
-	563:   "NNTP protocol over TLS/SSL",
-	587:   "Message Submission (Sendmail)",
-	631:   "IPP (Internet Printing Protocol)",
-	636:   "LDAP protocol over TLS/SSL",
-	873:   "rsync",
-	902:   "VMware Authentication Daemon",
-	989:   "FTP protocol data over TLS/SSL",
-	990:   "FTP protocol control over TLS/SSL",
-	993:   "IMAP4 protocol over TLS/SSL",
-	995:   "POP3 protocol over TLS/SSL",
-	1080:  "Socks",
-	1194:  "OpenVPN",
-	1433:  "Microsoft-SQL-Server",
-	1434:  "Microsoft-SQL-Monitor",
-	1494:  "Citrix/ica",
-	1521:  "Oracle",
-	1723:  "pptp",
-	1812:  "RADIUS",
-	1813:  "RADIUS Accounting",
-	1883:  "MQTT",
-	2049:  "Network File System",
-	2082:  "cPanel",
-	2083:  "cPanel SSL",
-	2181:  "ZooKeeper",
-	2375:  "Docker REST API",
-	2376:  "Docker REST API (SSL)",
-	3000:  "Grafana / Dev servers",
-	3306:  "MySQL",
-	3389:  "MS Terminal Server (RDP)",
-	3690:  "Subversion",
-	4000:  "Terabase",
-	4443:  "Pharos",
-	4444:  "Metasploit default",
-	5000:  "UPnP",
-	5432:  "PostgreSQL",
-	5500:  "VNC server",
-	5601:  "Kibana",
-	5672:  "AMQP (RabbitMQ)",
-	5900:  "VNC",
-	5984:  "CouchDB",
-	6000:  "X-Windows",
-	6379:  "Redis",
-	6443:  "Kubernetes API",
-	6666:  "IRC",
-	6667:  "IRC",
-	6881:  "BitTorrent",
-	7000:  "Cassandra inter-node",
-	7001:  "WebLogic Server",
-	7070:  "ARCP",
-	7474:  "Neo4j HTTP",
-	7687:  "Neo4j Bolt",
-	8000:  "HTTP alt",
-	8008:  "HTTP Alternate",
-	8009:  "Apache JServ Protocol",
-	8080:  "HTTP / HTTP Proxy",
-	8081:  "HTTP Proxy alt",
-	8443:  "HTTPS alt",
-	8500:  "Consul",
-	8834:  "Nessus",
-	8888:  "HTTP alt",
-	9000:  "SonarQube / PHP-FPM",
-	9090:  "Prometheus / WebSM",
-	9092:  "Kafka",
-	9100:  "HP JetDirect",
-	9200:  "Elasticsearch",
-	9300:  "Elasticsearch transport",
-	9418:  "git",
-	10000: "Webmin",
-	11211: "Memcached",
-	15672: "RabbitMQ Management",
-	27017: "MongoDB",
-	27018: "MongoDB shard",
-	27019: "MongoDB config",
-	28015: "RethinkDB",
-	50000: "SAP",
+// TopTCPPorts contains the most commonly open TCP ports, ordered by
+// likelihood of being found open on the internet. This list is curated
+// from empirical scanning data and is equivalent to nmap's --top-ports.
+var TopTCPPorts = []int{
+	// Top 100 TCP ports by frequency
+	80, 23, 443, 21, 22, 25, 3389, 110, 445, 139,
+	143, 53, 135, 3306, 8080, 1723, 111, 995, 993, 5900,
+	1025, 587, 8888, 199, 1720, 465, 548, 113, 81, 6001,
+	10000, 514, 5060, 179, 1026, 2000, 8443, 8000, 32768, 554,
+	26, 1433, 49152, 2001, 515, 8008, 49154, 1027, 5666, 646,
+	5000, 5631, 631, 49153, 8081, 2049, 88, 79, 5800, 106,
+	2121, 1110, 49155, 6000, 513, 990, 5357, 427, 49156, 543,
+	544, 5101, 144, 7, 389, 8009, 3128, 444, 9999, 5009,
+	7070, 5190, 3000, 5432, 1900, 3986, 13, 1029, 9, 5051,
+	6646, 49157, 1028, 873, 1755, 2717, 4899, 9100, 119, 37,
+
+	// Ports 101-200
+	1000, 3001, 5001, 82, 10010, 1030, 9090, 2107, 1024, 2103,
+	6004, 1801, 5050, 19, 8031, 1041, 255, 1049, 1048, 2967,
+	1053, 3703, 1056, 1065, 1064, 1054, 17, 808, 3689, 1031,
+	1044, 1071, 5901, 100, 9102, 8010, 2869, 1039, 5120, 4001,
+	9000, 2105, 636, 1038, 2601, 7000, 1, 1066, 1069, 625,
+	311, 280, 254, 4000, 5003, 1761, 2002, 2005, 1998, 1032,
+	1050, 6112, 3690, 1521, 2161, 6002, 1080, 2401, 4045, 902,
+	7937, 787, 1058, 2383, 32771, 1033, 1040, 1059, 50000, 5555,
+	10001, 1494, 593, 2301, 3268, 7938, 1022, 1234, 1035, 1036,
+	1037, 1074, 8002, 9001, 464, 1935, 2003, 497, 6666, 6543,
 }
+
+// CommonPorts is an alias for TopTCPPorts as a map for quick lookup.
+// Used during fast scans.
+var CommonPorts map[int]string
+
+func init() {
+	CommonPorts = make(map[int]string, len(TopTCPPorts))
+	for _, port := range TopTCPPorts {
+		CommonPorts[port] = LookupService(port)
+	}
+}
+
+// AllTCPPorts returns the full IANA TCP service map for detailed scans.
+// This is used when FastScan is false and no custom Ports are specified.
+var DetailedPorts = IANATCPServices
