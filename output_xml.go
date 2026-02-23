@@ -49,6 +49,8 @@ type XMLHost struct {
 	Hostnames XMLHostnames `xml:"hostnames"`
 	Ports     *XMLPorts    `xml:"ports,omitempty"`
 	OS        *XMLOS       `xml:"os,omitempty"`
+	Trace     *XMLTrace    `xml:"trace,omitempty"`
+	Scripts   []XMLScript  `xml:"hostscript>script,omitempty"`
 	Times     *XMLTimes    `xml:"times,omitempty"`
 }
 
@@ -82,10 +84,11 @@ type XMLPorts struct {
 
 // XMLPort represents a single port result.
 type XMLPort struct {
-	Protocol string     `xml:"protocol,attr"`
-	PortID   int        `xml:"portid,attr"`
-	State    XMLState   `xml:"state"`
-	Service  XMLService `xml:"service"`
+	Protocol string      `xml:"protocol,attr"`
+	PortID   int         `xml:"portid,attr"`
+	State    XMLState    `xml:"state"`
+	Service  XMLService  `xml:"service"`
+	Scripts  []XMLScript `xml:"script,omitempty"`
 }
 
 // XMLState describes a port's state.
@@ -101,12 +104,59 @@ type XMLService struct {
 
 // XMLOS contains OS detection results.
 type XMLOS struct {
+	OSMatch       []XMLOSMatch       `xml:"osmatch,omitempty"`
 	OSFingerprint []XMLOSFingerprint `xml:"osfingerprint,omitempty"`
+}
+
+// XMLOSMatch represents a matched OS.
+type XMLOSMatch struct {
+	Name     string       `xml:"name,attr"`
+	Accuracy string       `xml:"accuracy,attr"`
+	Line     int          `xml:"line,attr,omitempty"`
+	Classes  []XMLOSClass `xml:"osclass,omitempty"`
+}
+
+// XMLOSClass is an OS classification within a match.
+type XMLOSClass struct {
+	Vendor     string   `xml:"vendor,attr,omitempty"`
+	Family     string   `xml:"osfamily,attr,omitempty"`
+	Generation string   `xml:"osgen,attr,omitempty"`
+	Type       string   `xml:"type,attr,omitempty"`
+	Accuracy   string   `xml:"accuracy,attr,omitempty"`
+	CPE        []string `xml:"cpe,omitempty"`
 }
 
 // XMLOSFingerprint contains a raw OS fingerprint.
 type XMLOSFingerprint struct {
 	Fingerprint string `xml:"fingerprint,attr"`
+}
+
+// XMLTrace represents traceroute data.
+type XMLTrace struct {
+	Port  int        `xml:"port,attr,omitempty"`
+	Proto string     `xml:"proto,attr,omitempty"`
+	Hops  []XMLHop   `xml:"hop"`
+}
+
+// XMLHop is a single traceroute hop.
+type XMLHop struct {
+	TTL    int    `xml:"ttl,attr"`
+	IPAddr string `xml:"ipaddr,attr,omitempty"`
+	RTT    string `xml:"rtt,attr,omitempty"`
+	Host   string `xml:"host,attr,omitempty"`
+}
+
+// XMLScript contains script output for a port or host.
+type XMLScript struct {
+	ID       string           `xml:"id,attr"`
+	Output   string           `xml:"output,attr"`
+	Elements []XMLScriptElem  `xml:"elem,omitempty"`
+}
+
+// XMLScriptElem is a key-value element within script output.
+type XMLScriptElem struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:",chardata"`
 }
 
 // XMLTimes contains timing information.

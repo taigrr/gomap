@@ -42,6 +42,11 @@ type ScanOptions struct {
 
 	// PreferIPv6 makes the scanner prefer IPv6 addresses when resolving hostnames.
 	PreferIPv6 bool
+
+	// Decoys configures decoy scanning. When set, additional packets are sent
+	// from spoofed source IPs to obscure the real scanner. Only works with
+	// raw socket scan types (SYN, FIN, Xmas, Null, ACK, Window).
+	Decoys *DecoyConfig
 }
 
 func (o *ScanOptions) defaults() {
@@ -259,6 +264,11 @@ type portJob struct {
 
 // scanPort dispatches a port scan to the appropriate scanner based on scan type.
 func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob) {
+	// Send decoy packets for raw scan types
+	if opts.Decoys != nil && opts.ScanType.RequiresRawSocket() {
+		sendDecoyPackets(ctx, opts, hostname, job.port, laddr)
+	}
+
 	switch opts.ScanType {
 	case ConnectScan:
 		scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout)
@@ -278,6 +288,35 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout)
 	default:
 		scanPortConnect(ctx, resultCh, "tcp", hostname, job.service, job.port, opts.Timeout)
+	}
+}
+
+// sendDecoyPackets sends scan packets from each decoy IP.
+// These are "noise" packets that make it harder to identify the real scanner.
+func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, port int, realAddr string) {
+	flags := tcpSYN // default
+	switch opts.ScanType {
+	case FINScan:
+		flags = tcpFIN
+	case XmasScan:
+		flags = tcpFIN | tcpPSH | tcpURG
+	case NullScan:
+		flags = 0
+	case ACKScan, WindowScan:
+		flags = tcpACK
+	}
+
+	for _, decoyIP := range opts.Decoys.ResolvedIPs() {
+		if ctx.Err() != nil {
+			return
+		}
+		addr := decoyIP.String()
+		if addr == realAddr {
+			continue // skip real IP, it sends its own packet
+		}
+		sport := uint16(randomPort(10000, 65535))
+		// Best-effort: ignore errors from decoy packets
+		sendTCPPacket(addr, hostname, sport, uint16(port), flags)
 	}
 }
 
