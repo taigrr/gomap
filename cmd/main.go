@@ -14,14 +14,18 @@ import (
 )
 
 var (
-	fast      bool
-	scanType  string
-	jsonOut   bool
-	cidr      string
-	topPorts  int
-	discovery bool
-	osDetect  bool
-	version   = "dev"
+	fast       bool
+	scanType   string
+	jsonOut    bool
+	xmlOut     bool
+	grepOut    bool
+	cidr       string
+	topPorts   int
+	discovery  bool
+	osDetect   bool
+	bannerGrab bool
+	timing     string
+	version    = "dev"
 )
 
 func main() {
@@ -38,10 +42,14 @@ func main() {
 	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
 	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, udp")
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
+	rootCmd.Flags().BoolVarP(&xmlOut, "xml", "x", false, "Output as nmap-compatible XML")
+	rootCmd.Flags().BoolVarP(&grepOut, "grep", "g", false, "Output in grepable format")
 	rootCmd.Flags().StringVarP(&cidr, "cidr", "c", "", "Scan a CIDR range instead of a single host")
 	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
 	rootCmd.Flags().BoolVarP(&discovery, "ping", "P", false, "Host discovery only (no port scan)")
 	rootCmd.Flags().BoolVarP(&osDetect, "os", "O", false, "Enable OS detection (requires root)")
+	rootCmd.Flags().BoolVarP(&bannerGrab, "version", "V", false, "Enable service version detection (banner grabbing)")
+	rootCmd.Flags().StringVarP(&timing, "timing", "T", "", "Timing template: T0-T5 or paranoid/sneaky/polite/normal/aggressive/insane")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -51,6 +59,8 @@ func main() {
 func run(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+
+	startTime := time.Now()
 
 	// Host discovery mode
 	if discovery {
@@ -65,11 +75,22 @@ func run(cmd *cobra.Command, args []string) error {
 	opts := gomap.ScanOptions{
 		FastScan: fast,
 		ScanType: st,
-		ProgressFunc: func(scanned, total int) {
-			if !jsonOut {
-				fmt.Fprintf(os.Stderr, "\033[2K\rScanning: %d/%d ports", scanned, total)
-			}
-		},
+	}
+
+	// Apply timing template
+	if timing != "" {
+		tt, err := gomap.ParseTimingTemplate(timing)
+		if err != nil {
+			return err
+		}
+		gomap.ApplyTiming(&opts, tt)
+	}
+
+	// Progress (only for non-machine-readable output)
+	if !jsonOut && !xmlOut && !grepOut {
+		opts.ProgressFunc = func(scanned, total int) {
+			fmt.Fprintf(os.Stderr, "\033[2K\rScanning: %d/%d ports", scanned, total)
+		}
 	}
 
 	// --top-ports overrides --fast
@@ -86,7 +107,7 @@ func run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		clearProgress()
-		return printResults(nil, results)
+		return printResults(nil, results, st, startTime)
 	}
 
 	if len(args) == 0 {
@@ -95,7 +116,7 @@ func run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		clearProgress()
-		return printResults(nil, results)
+		return printResults(nil, results, st, startTime)
 	}
 
 	result, err := gomap.ScanHost(ctx, args[0], opts)
@@ -104,12 +125,25 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	clearProgress()
 
-	if err := printResults(result, nil); err != nil {
+	if err := printResults(result, nil, st, startTime); err != nil {
 		return err
 	}
 
+	// Banner grabbing
+	if bannerGrab && result != nil && len(args) > 0 {
+		versions := gomap.GrabBanners(ctx, args[0], result, opts.Timeout)
+		if len(versions) > 0 && !jsonOut && !xmlOut && !grepOut {
+			fmt.Println("\nService Versions:")
+			for _, v := range versions {
+				if v.Banner != "" {
+					fmt.Printf("  %d/%s: %s\n", v.Port, v.Service, v.Banner)
+				}
+			}
+		}
+	}
+
 	// OS detection
-	if osDetect && result != nil {
+	if osDetect && result != nil && len(args) > 0 {
 		openPort, closedPort := findOSDetectPorts(result)
 		if openPort == 0 {
 			fmt.Fprintln(os.Stderr, "OS detection requires at least one open port")
@@ -117,7 +151,7 @@ func run(cmd *cobra.Command, args []string) error {
 			osResult, err := gomap.DetectOS(ctx, args[0], openPort, closedPort, opts)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "OS detection failed: %v\n", err)
-			} else {
+			} else if !xmlOut {
 				fmt.Println("\nOS Fingerprint:")
 				fmt.Print(osResult.Raw)
 			}
@@ -127,14 +161,17 @@ func run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func clearProgress() {
-	if !jsonOut {
-		fmt.Fprintln(os.Stderr)
-	}
-}
-
 func runDiscovery(ctx context.Context) error {
 	opts := gomap.DiscoveryOptions{}
+
+	if timing != "" {
+		tt, err := gomap.ParseTimingTemplate(timing)
+		if err != nil {
+			return err
+		}
+		gomap.ApplyTimingDiscovery(&opts, tt)
+	}
+
 	var results []gomap.HostResult
 	var err error
 
@@ -207,8 +244,35 @@ func parseScanType(s string) (gomap.ScanType, error) {
 	}
 }
 
-func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult) error {
-	if jsonOut {
+func clearProgress() {
+	if !jsonOut && !xmlOut && !grepOut {
+		fmt.Fprintln(os.Stderr)
+	}
+}
+
+func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult, st gomap.ScanType, startTime time.Time) error {
+	switch {
+	case xmlOut:
+		var data []byte
+		var err error
+		if single != nil {
+			data, err = single.ToXML(st, startTime, version)
+		} else {
+			data, err = multi.ToXML(st, startTime, version)
+		}
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+
+	case grepOut:
+		if single != nil {
+			fmt.Print(single.ToGrepable())
+		} else {
+			fmt.Print(multi.ToGrepable())
+		}
+
+	case jsonOut:
 		var out string
 		var err error
 		if single != nil {
@@ -220,13 +284,14 @@ func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult) error {
 			return err
 		}
 		fmt.Println(out)
-		return nil
+
+	default:
+		if single != nil {
+			fmt.Print(single.String())
+		} else {
+			fmt.Print(multi.String())
+		}
 	}
 
-	if single != nil {
-		fmt.Print(single.String())
-	} else {
-		fmt.Print(multi.String())
-	}
 	return nil
 }

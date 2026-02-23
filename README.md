@@ -50,8 +50,18 @@ gomap -P -c 192.168.1.0/24
 # OS detection
 sudo gomap -O example.com
 
-# JSON output
-gomap -j example.com
+# Output formats
+gomap -j example.com          # JSON
+gomap -x example.com          # nmap-compatible XML
+gomap -g example.com          # Grepable
+
+# Service version detection (banner grabbing)
+gomap -V example.com
+
+# Timing templates
+gomap -T aggressive example.com  # T4: fast
+gomap -T insane example.com      # T5: maximum speed
+gomap -T paranoid example.com    # T0: IDS evasion
 ```
 
 ## Library Usage
@@ -121,6 +131,16 @@ cidr := gomap.GetLocalRange()
 
 // Parse CIDR to host list
 hosts := gomap.CreateHostRange("192.168.1.0/24")
+
+// MAC vendor lookup (37K OUI entries)
+vendor := gomap.LookupMACVendor("00:50:56:12:34:56") // "VMware"
+
+// Banner grabbing
+sv, err := gomap.GrabBanner(ctx, "example.com", 22, 3*time.Second)
+// sv.Service = "ssh", sv.Banner = "SSH-2.0-OpenSSH_9.0"
+
+// Timing templates
+gomap.ApplyTiming(&opts, gomap.TimingAggressive)
 ```
 
 ## Platform Support
@@ -156,13 +176,14 @@ This fetches the latest IANA CSV and regenerates `services_generated.go`.
 - [x] UDP scanning
 - [x] Host discovery (ICMP, TCP SYN/ACK, UDP, ARP)
 - [x] OS fingerprinting (TCP/IP stack analysis)
-- [ ] Service version detection (banner grabbing)
+- [x] Service version detection (banner grabbing)
+- [x] Timing templates (T0-T5)
+- [x] XML output (nmap-compatible)
+- [x] Grepable output (-oG)
+- [x] MAC address vendor lookup (37K OUI entries)
 - [ ] OS fingerprint database matching
-- [ ] Timing templates (T0-T5)
-- [ ] XML output (nmap-compatible)
 - [ ] IPv6 support
 - [ ] Traceroute
-- [ ] MAC address vendor lookup
 - [ ] NSE-style scripting
 
 ## License
