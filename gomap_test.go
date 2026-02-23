@@ -62,15 +62,15 @@ func TestLookupServiceConcurrent(t *testing.T) {
 
 func TestCreateHostRange(t *testing.T) {
 	tests := []struct {
-		cidr     string
-		wantLen  int
-		wantNil  bool
+		cidr      string
+		wantLen   int
+		wantNil   bool
 		wantFirst string
 	}{
 		{"192.168.1.0/30", 2, false, "192.168.1.1"},
 		{"10.0.0.0/30", 2, false, "10.0.0.1"},
 		{"not-a-cidr", 0, true, ""},
-		{"192.168.1.0/32", 0, false, ""},  // single host, no range
+		{"192.168.1.0/32", 0, false, ""}, // single host, no range
 	}
 	for _, tt := range tests {
 		hosts := CreateHostRange(tt.cidr)
