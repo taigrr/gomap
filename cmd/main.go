@@ -54,8 +54,14 @@ var (
 	listScan     bool
 	badSum       bool
 	ttl          int
-	dataLength   int
-	version      = "dev"
+	dataLength       int
+	minRate          int
+	maxRate          int
+	versionIntensity int
+	packetTrace      bool
+	osscanLimit      bool
+	osscanGuess      bool
+	version          = "dev"
 )
 
 func main() {
@@ -109,6 +115,12 @@ func main() {
 	rootCmd.Flags().BoolVar(&badSum, "badsum", false, "Send packets with bad checksums")
 	rootCmd.Flags().IntVar(&ttl, "ttl", 0, "Set IP time-to-live on outgoing packets")
 	rootCmd.Flags().IntVar(&dataLength, "data-length", 0, "Pad packets with random data to given length")
+	rootCmd.Flags().IntVar(&minRate, "min-rate", 0, "Minimum packets per second")
+	rootCmd.Flags().IntVar(&maxRate, "max-rate", 0, "Maximum packets per second")
+	rootCmd.Flags().IntVar(&versionIntensity, "version-intensity", 7, "Service probe intensity (0-9)")
+	rootCmd.Flags().BoolVar(&packetTrace, "packet-trace", false, "Log every packet sent/received")
+	rootCmd.Flags().BoolVar(&osscanLimit, "osscan-limit", false, "Skip OS detection on hosts without open+closed ports")
+	rootCmd.Flags().BoolVar(&osscanGuess, "osscan-guess", false, "Guess OS more aggressively")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -197,7 +209,13 @@ func run(cmd *cobra.Command, args []string) error {
 		NoPing:      noPing,
 		BadSum:      badSum,
 		TTL:         ttl,
-		DataLength:  dataLength,
+		DataLength:       dataLength,
+		MinRate:          minRate,
+		MaxRate:          maxRate,
+		VersionIntensity: versionIntensity,
+		PacketTrace:      packetTrace,
+		OSScanLimit:      osscanLimit,
+		OSScanGuess:      osscanGuess,
 	}
 
 	// Parse port specification
@@ -322,6 +340,8 @@ func run(cmd *cobra.Command, args []string) error {
 		openPort, closedPort := findOSDetectPorts(result)
 		if openPort == 0 {
 			fmt.Fprintln(os.Stderr, "OS detection requires at least one open port")
+		} else if osscanLimit && closedPort == 0 {
+			fmt.Fprintln(os.Stderr, "OS detection skipped (--osscan-limit: no closed port found)")
 		} else {
 			osResult, err := gomap.DetectOS(ctx, args[0], openPort, closedPort, opts)
 			if err != nil {
