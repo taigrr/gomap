@@ -4,6 +4,7 @@ package gomap
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"math/rand"
 	"net"
@@ -22,19 +23,18 @@ const (
 
 // scanPortRaw sends a TCP packet with the specified flags and interprets the response.
 // Used for FIN, Xmas, and Null scans.
-//
-// Behavior (per RFC 793):
-//   - Closed port: responds with RST
-//   - Open port: no response (open|filtered)
-//   - Filtered: ICMP unreachable or no response
-func scanPortRaw(resultCh chan<- PortResult, hostname, service string, port int, laddr string, flags uint16, timeout time.Duration) {
+func scanPortRaw(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, flags uint16, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
-	responseCh := make(chan rawResponse, 1)
 
+	if ctx.Err() != nil {
+		result.State = PortFiltered
+		resultCh <- result
+		return
+	}
+
+	responseCh := make(chan rawResponse, 1)
 	sport := uint16(randomPort(10000, 65535))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
-
-	// Small delay to let listener start
 	time.Sleep(5 * time.Millisecond)
 
 	err := sendTCPPacket(laddr, hostname, sport, uint16(port), flags)
@@ -45,17 +45,16 @@ func scanPortRaw(resultCh chan<- PortResult, hostname, service string, port int,
 	}
 
 	select {
+	case <-ctx.Done():
+		result.State = PortFiltered
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
-			// RST received = closed
 			result.State = PortClosed
 		} else {
-			// Other response
 			result.State = PortOpenFiltered
 			result.Open = true
 		}
 	case <-time.After(timeout):
-		// No response = open|filtered
 		result.State = PortOpenFiltered
 		result.Open = true
 	}
@@ -63,18 +62,19 @@ func scanPortRaw(resultCh chan<- PortResult, hostname, service string, port int,
 	resultCh <- result
 }
 
-// scanPortACK sends a TCP ACK packet. Used for firewall rule mapping.
-//
-// Behavior:
-//   - Unfiltered: RST received (regardless of open/closed)
-//   - Filtered: no response or ICMP unreachable
-func scanPortACK(resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
+// scanPortACK sends a TCP ACK packet for firewall rule mapping.
+func scanPortACK(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
-	responseCh := make(chan rawResponse, 1)
 
+	if ctx.Err() != nil {
+		result.State = PortFiltered
+		resultCh <- result
+		return
+	}
+
+	responseCh := make(chan rawResponse, 1)
 	sport := uint16(randomPort(10000, 65535))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
-
 	time.Sleep(5 * time.Millisecond)
 
 	err := sendTCPPacket(laddr, hostname, sport, uint16(port), tcpACK)
@@ -85,6 +85,8 @@ func scanPortACK(resultCh chan<- PortResult, hostname, service string, port int,
 	}
 
 	select {
+	case <-ctx.Done():
+		result.State = PortFiltered
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
 			result.State = PortUnfiltered
@@ -98,19 +100,19 @@ func scanPortACK(resultCh chan<- PortResult, hostname, service string, port int,
 	resultCh <- result
 }
 
-// scanPortWindow is like ACK scan but examines the TCP window size in RST responses.
-//
-// Behavior:
-//   - Open: RST with non-zero window size
-//   - Closed: RST with zero window size
-//   - Filtered: no response
-func scanPortWindow(resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
+// scanPortWindow examines TCP window size in RST responses.
+func scanPortWindow(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
-	responseCh := make(chan rawResponse, 1)
 
+	if ctx.Err() != nil {
+		result.State = PortFiltered
+		resultCh <- result
+		return
+	}
+
+	responseCh := make(chan rawResponse, 1)
 	sport := uint16(randomPort(10000, 65535))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
-
 	time.Sleep(5 * time.Millisecond)
 
 	err := sendTCPPacket(laddr, hostname, sport, uint16(port), tcpACK)
@@ -121,6 +123,8 @@ func scanPortWindow(resultCh chan<- PortResult, hostname, service string, port i
 	}
 
 	select {
+	case <-ctx.Done():
+		result.State = PortFiltered
 	case resp := <-responseCh:
 		if resp.flags&tcpRST != 0 {
 			if resp.window > 0 {
@@ -144,8 +148,7 @@ type rawResponse struct {
 	window uint16
 }
 
-// listenForResponse listens for a TCP response from the target host on the
-// specified source port.
+// listenForResponse listens for a TCP response from the target.
 func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawResponse, timeout time.Duration) {
 	listenAddr, err := net.ResolveIPAddr("ip4", laddr)
 	if err != nil {
@@ -169,7 +172,6 @@ func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawRe
 			continue
 		}
 
-		// Parse TCP header
 		srcPort := binary.BigEndian.Uint16(buf[0:2])
 		dstPort := binary.BigEndian.Uint16(buf[2:4])
 
@@ -177,7 +179,6 @@ func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawRe
 			continue
 		}
 
-		// Data offset is top 4 bits of byte 12
 		flags := binary.BigEndian.Uint16(buf[12:14]) & 0x003f
 		window := binary.BigEndian.Uint16(buf[14:16])
 
@@ -189,16 +190,11 @@ func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawRe
 // sendTCPPacket constructs and sends a raw TCP packet with the specified flags.
 func sendTCPPacket(laddr, raddr string, sport, dport, flags uint16) error {
 	op := []tcpOption{
-		{
-			Kind:   2,
-			Length: 4,
-			Data:   []byte{0x05, 0xb4},
-		},
+		{Kind: 2, Length: 4, Data: []byte{0x05, 0xb4}},
 		{Kind: 0},
 	}
 
-	// Data offset (5 words + options) in upper 4 bits, flags in lower
-	dataOffset := uint16(0x8000) // 8 = 32 bytes / 4 = data offset in 32-bit words
+	dataOffset := uint16(0x8000)
 	flagField := dataOffset | flags
 
 	tcpH := tcpHeader{
@@ -218,7 +214,6 @@ func sendTCPPacket(laddr, raddr string, sport, dport, flags uint16) error {
 	}
 	defer conn.Close()
 
-	// Build packet for checksum
 	buff := new(bytes.Buffer)
 	binary.Write(buff, binary.BigEndian, tcpH)
 	for i := range op {
@@ -231,7 +226,6 @@ func sendTCPPacket(laddr, raddr string, sport, dport, flags uint16) error {
 	checkSum := tcpChecksum(data, ipToBytes(laddr), ipToBytes(raddr))
 	tcpH.ChkSum = checkSum
 
-	// Build final packet
 	buff = new(bytes.Buffer)
 	binary.Write(buff, binary.BigEndian, tcpH)
 	for i := range op {

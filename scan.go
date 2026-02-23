@@ -204,7 +204,7 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 				if ctx.Err() != nil {
 					return
 				}
-				scanPort(resultCh, opts, hostname, laddr, job)
+				scanPort(ctx, resultCh, opts, hostname, laddr, job)
 			}
 		}()
 	}
@@ -239,37 +239,42 @@ type portJob struct {
 }
 
 // scanPort dispatches a port scan to the appropriate scanner based on scan type.
-func scanPort(resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob) {
+func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob) {
 	switch opts.ScanType {
 	case ConnectScan:
-		scanPortConnect(resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout)
+		scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout)
 	case SYNScan:
-		scanPortSyn(resultCh, opts.protocol(), hostname, job.service, job.port, laddr)
+		scanPortSyn(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, laddr, opts.Timeout)
 	case FINScan:
-		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, tcpFIN, opts.Timeout)
+		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, tcpFIN, opts.Timeout)
 	case XmasScan:
-		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpPSH|tcpURG, opts.Timeout)
+		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpPSH|tcpURG, opts.Timeout)
 	case NullScan:
-		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, 0, opts.Timeout)
+		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, 0, opts.Timeout)
 	case ACKScan:
-		scanPortACK(resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+		scanPortACK(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
 	case WindowScan:
-		scanPortWindow(resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+		scanPortWindow(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
 	case UDPScan:
-		scanPortUDP(resultCh, hostname, job.service, job.port, opts.Timeout)
+		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout)
 	default:
-		scanPortConnect(resultCh, "tcp", hostname, job.service, job.port, opts.Timeout)
+		scanPortConnect(ctx, resultCh, "tcp", hostname, job.service, job.port, opts.Timeout)
 	}
 }
 
 // scanPortConnect performs a full TCP connect() scan on a single port.
-func scanPortConnect(resultCh chan<- PortResult, protocol, hostname, service string, port int, timeout time.Duration) {
+func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, hostname, service string, port int, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
-	address := hostname + ":" + strconv.Itoa(port)
-	conn, err := net.DialTimeout(protocol, address, timeout)
+
+	// Use a dialer that respects context
+	d := net.Dialer{Timeout: timeout}
+	conn, err := d.DialContext(ctx, protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 	if err != nil {
-		result.Open = false
-		result.State = PortClosed
+		if ctx.Err() != nil {
+			result.State = PortFiltered
+		} else {
+			result.State = PortClosed
+		}
 		resultCh <- result
 		return
 	}
@@ -281,11 +286,11 @@ func scanPortConnect(resultCh chan<- PortResult, protocol, hostname, service str
 
 // scanPortUDP sends an empty UDP packet and listens for ICMP unreachable.
 // No response = open|filtered, ICMP unreachable = closed.
-func scanPortUDP(resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration) {
+func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
-	address := hostname + ":" + strconv.Itoa(port)
 
-	conn, err := net.DialTimeout("udp", address, timeout)
+	d := net.Dialer{Timeout: timeout}
+	conn, err := d.DialContext(ctx, "udp", net.JoinHostPort(hostname, strconv.Itoa(port)))
 	if err != nil {
 		result.State = PortFiltered
 		resultCh <- result
@@ -294,7 +299,12 @@ func scanPortUDP(resultCh chan<- PortResult, hostname, service string, port int,
 	defer conn.Close()
 
 	// Send empty UDP packet
-	conn.SetDeadline(time.Now().Add(timeout))
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(timeout)
+	}
+	conn.SetDeadline(deadline)
+
 	_, err = conn.Write([]byte{})
 	if err != nil {
 		result.State = PortFiltered
@@ -304,25 +314,24 @@ func scanPortUDP(resultCh chan<- PortResult, hostname, service string, port int,
 
 	// Try to read response
 	buf := make([]byte, 1024)
-	conn.SetDeadline(time.Now().Add(timeout))
-	n, err := conn.Read(buf)
+	_, err = conn.Read(buf)
 	if err != nil {
-		// Timeout or ICMP unreachable
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			// No response — could be open or filtered
-			result.State = PortOpenFiltered
-			result.Open = true // treat as potentially open
+		if ctx.Err() != nil {
+			result.State = PortFiltered
 			resultCh <- result
 			return
 		}
-		// Connection refused (ICMP port unreachable) = closed
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			result.State = PortOpenFiltered
+			result.Open = true
+			resultCh <- result
+			return
+		}
 		result.State = PortClosed
 		resultCh <- result
 		return
 	}
 
-	// Got data back — definitely open
-	_ = n
 	result.Open = true
 	result.State = PortOpen
 	resultCh <- result

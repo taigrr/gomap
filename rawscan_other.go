@@ -3,6 +3,7 @@
 package gomap
 
 import (
+	"context"
 	"time"
 )
 
@@ -16,20 +17,18 @@ const (
 	tcpURG uint16 = 0x0020
 )
 
-// scanPortRaw is not supported on non-Linux platforms.
-// Falls back to connect scan.
-func scanPortRaw(resultCh chan<- PortResult, hostname, service string, port int, laddr string, flags uint16, timeout time.Duration) {
-	scanPortConnect(resultCh, "tcp", hostname, service, port, timeout)
+// scanPortRaw falls back to connect scan on non-Linux.
+func scanPortRaw(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, flags uint16, timeout time.Duration) {
+	scanPortConnect(ctx, resultCh, "tcp", hostname, service, port, timeout)
 }
 
-// scanPortACK is not supported on non-Linux platforms.
-func scanPortACK(resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
-	// Cannot determine filtered/unfiltered without raw sockets
+// scanPortACK falls back on non-Linux.
+func scanPortACK(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service, State: PortUnfiltered}
 	resultCh <- result
 }
 
-// scanPortWindow is not supported on non-Linux platforms.
-func scanPortWindow(resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
-	scanPortConnect(resultCh, "tcp", hostname, service, port, timeout)
+// scanPortWindow falls back to connect scan on non-Linux.
+func scanPortWindow(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, laddr string, timeout time.Duration) {
+	scanPortConnect(ctx, resultCh, "tcp", hostname, service, port, timeout)
 }

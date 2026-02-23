@@ -3,28 +3,35 @@
 package gomap
 
 import (
+	"context"
 	"net"
 	"time"
 )
 
 // probeICMP sends an ICMP echo request.
-func probeICMP(host string, timeout time.Duration) bool {
+func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
 	conn, err := net.DialTimeout("ip4:icmp", host, timeout)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(timeout))
 
-	// ICMP echo request
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(timeout)
+	}
+	conn.SetDeadline(deadline)
+
 	msg := []byte{
 		8, 0, // Type: Echo Request, Code: 0
-		0, 0, // Checksum (computed below)
+		0, 0, // Checksum
 		0, 1, // Identifier
 		0, 1, // Sequence number
 	}
-
-	// Compute checksum
 	cs := icmpChecksum(msg)
 	msg[2] = byte(cs >> 8)
 	msg[3] = byte(cs)
@@ -40,15 +47,12 @@ func probeICMP(host string, timeout time.Duration) bool {
 		return false
 	}
 
-	// Verify we got an ICMP echo reply (type 0)
 	if n >= 20 {
-		// IP header is typically 20 bytes, ICMP starts after
 		icmpOffset := 20
 		if n > icmpOffset && buf[icmpOffset] == 0 {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -66,14 +70,16 @@ func icmpChecksum(data []byte) uint16 {
 }
 
 // probeTCPSYN sends a SYN packet to detect hosts.
-func probeTCPSYN(host string, ports []int, timeout time.Duration) bool {
+func probeTCPSYN(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
 	laddr, err := GetLocalIP()
 	if err != nil || !canSocketBind(laddr) {
-		// Fall back to connect
-		return probeTCPConnect(host, ports, timeout)
+		return probeTCPConnect(ctx, host, ports, timeout)
 	}
 
 	for _, port := range ports {
+		if ctx.Err() != nil {
+			return false
+		}
 		responseCh := make(chan rawResponse, 1)
 		sport := uint16(randomPort(10000, 65535))
 
@@ -82,8 +88,9 @@ func probeTCPSYN(host string, ports []int, timeout time.Duration) bool {
 		sendTCPPacket(laddr, host, sport, uint16(port), tcpSYN)
 
 		select {
+		case <-ctx.Done():
+			return false
 		case resp := <-responseCh:
-			// Any TCP response means the host is alive
 			if resp.flags&(tcpSYN|tcpRST|tcpACK) != 0 {
 				return true
 			}
@@ -95,13 +102,16 @@ func probeTCPSYN(host string, ports []int, timeout time.Duration) bool {
 }
 
 // probeTCPACK sends an ACK packet to detect hosts.
-func probeTCPACK(host string, ports []int, timeout time.Duration) bool {
+func probeTCPACK(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
 	laddr, err := GetLocalIP()
 	if err != nil || !canSocketBind(laddr) {
-		return probeTCPConnect(host, ports, timeout)
+		return probeTCPConnect(ctx, host, ports, timeout)
 	}
 
 	for _, port := range ports {
+		if ctx.Err() != nil {
+			return false
+		}
 		responseCh := make(chan rawResponse, 1)
 		sport := uint16(randomPort(10000, 65535))
 
@@ -110,8 +120,9 @@ func probeTCPACK(host string, ports []int, timeout time.Duration) bool {
 		sendTCPPacket(laddr, host, sport, uint16(port), tcpACK)
 
 		select {
+		case <-ctx.Done():
+			return false
 		case resp := <-responseCh:
-			// RST means the host is alive (regardless of firewall)
 			if resp.flags&tcpRST != 0 {
 				return true
 			}
@@ -122,12 +133,12 @@ func probeTCPACK(host string, ports []int, timeout time.Duration) bool {
 	return false
 }
 
-// probeARP attempts ARP-based host discovery.
-// Only works on the local subnet.
-func probeARP(host string, timeout time.Duration) bool {
-	// On Linux, we can use the ARP table after pinging
-	// For now, try a TCP connect (which triggers ARP) and check the table
-	_ = probeTCPConnect(host, []int{80}, timeout)
+// probeARP uses ARP-based host discovery on the local subnet.
+func probeARP(ctx context.Context, host string, timeout time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	_ = probeTCPConnect(ctx, host, []int{80}, timeout)
 
 	table, err := LoadARPTable()
 	if err != nil {

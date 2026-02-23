@@ -2,12 +2,15 @@
 
 package gomap
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"time"
+)
 
-// scanPortSyn is not supported on non-Linux platforms.
-// Falls back to connect scan.
-func scanPortSyn(resultCh chan<- PortResult, protocol, hostname, service string, port int, laddr string) {
-	scanPortConnect(resultCh, protocol, hostname, service, port, 3*1e9)
+// scanPortSyn falls back to connect scan on non-Linux platforms.
+func scanPortSyn(ctx context.Context, resultCh chan<- PortResult, protocol, hostname, service string, port int, laddr string, timeout time.Duration) {
+	scanPortConnect(ctx, resultCh, protocol, hostname, service, port, timeout)
 }
 
 // ErrStealthNotSupported is returned when stealth scanning is attempted on

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -159,17 +160,17 @@ func probeHost(ctx context.Context, host string, opts DiscoveryOptions) HostResu
 
 		switch method {
 		case DiscoveryICMP:
-			alive = probeICMP(host, opts.Timeout)
+			alive = probeICMP(ctx, host, opts.Timeout)
 		case DiscoveryConnect:
-			alive = probeTCPConnect(host, opts.Ports, opts.Timeout)
+			alive = probeTCPConnect(ctx, host, opts.Ports, opts.Timeout)
 		case DiscoveryTCPSYN:
-			alive = probeTCPSYN(host, opts.Ports, opts.Timeout)
+			alive = probeTCPSYN(ctx, host, opts.Ports, opts.Timeout)
 		case DiscoveryTCPACK:
-			alive = probeTCPACK(host, opts.Ports, opts.Timeout)
+			alive = probeTCPACK(ctx, host, opts.Ports, opts.Timeout)
 		case DiscoveryUDP:
-			alive = probeUDP(host, opts.Ports, opts.Timeout)
+			alive = probeUDP(ctx, host, opts.Ports, opts.Timeout)
 		case DiscoveryARP:
-			alive = probeARP(host, opts.Timeout)
+			alive = probeARP(ctx, host, opts.Timeout)
 		}
 
 		if alive {
@@ -184,10 +185,14 @@ func probeHost(ctx context.Context, host string, opts DiscoveryOptions) HostResu
 }
 
 // probeTCPConnect attempts a TCP connect to any of the specified ports.
-func probeTCPConnect(host string, ports []int, timeout time.Duration) bool {
+func probeTCPConnect(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
+	d := net.Dialer{Timeout: timeout}
 	for _, port := range ports {
+		if ctx.Err() != nil {
+			return false
+		}
 		addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-		conn, err := net.DialTimeout("tcp", addr, timeout)
+		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			conn.Close()
 			return true
@@ -201,10 +206,14 @@ func probeTCPConnect(host string, ports []int, timeout time.Duration) bool {
 }
 
 // probeUDP sends UDP packets to detect hosts via ICMP unreachable.
-func probeUDP(host string, ports []int, timeout time.Duration) bool {
+func probeUDP(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
+	d := net.Dialer{Timeout: timeout}
 	for _, port := range ports {
+		if ctx.Err() != nil {
+			return false
+		}
 		addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-		conn, err := net.DialTimeout("udp", addr, timeout)
+		conn, err := d.DialContext(ctx, "udp", addr)
 		if err != nil {
 			continue
 		}
@@ -241,18 +250,5 @@ func isConnectionRefused(err error) bool {
 		return opErr.Err.Error() == "connect: connection refused"
 	}
 	// Check the error string as fallback
-	return contains(err.Error(), "connection refused")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(err.Error(), "connection refused")
 }

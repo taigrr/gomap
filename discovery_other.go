@@ -3,29 +3,30 @@
 package gomap
 
 import (
+	"context"
 	"net"
 	"time"
 )
 
-// probeICMP uses an unprivileged ICMP ping via UDP on non-Linux platforms.
-// This uses Go's net.Dial with "ip4:icmp" which may not work without privileges.
-// Falls back to TCP connect if ICMP fails.
-func probeICMP(host string, timeout time.Duration) bool {
+// probeICMP attempts ICMP ping, falls back to TCP connect.
+func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
 	conn, err := net.DialTimeout("ip4:icmp", host, timeout)
 	if err != nil {
-		// ICMP not available without privileges, fall back to TCP
-		return probeTCPConnect(host, []int{80, 443}, timeout)
+		return probeTCPConnect(ctx, host, []int{80, 443}, timeout)
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(timeout))
 
-	msg := []byte{
-		8, 0,
-		0, 0,
-		0, 1,
-		0, 1,
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(timeout)
 	}
+	conn.SetDeadline(deadline)
 
+	msg := []byte{8, 0, 0, 0, 0, 1, 0, 1}
 	var sum uint32
 	for i := 0; i < len(msg)-1; i += 2 {
 		sum += uint32(msg[i])<<8 | uint32(msg[i+1])
@@ -47,16 +48,16 @@ func probeICMP(host string, timeout time.Duration) bool {
 }
 
 // probeTCPSYN falls back to TCP connect on non-Linux.
-func probeTCPSYN(host string, ports []int, timeout time.Duration) bool {
-	return probeTCPConnect(host, ports, timeout)
+func probeTCPSYN(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
+	return probeTCPConnect(ctx, host, ports, timeout)
 }
 
 // probeTCPACK falls back to TCP connect on non-Linux.
-func probeTCPACK(host string, ports []int, timeout time.Duration) bool {
-	return probeTCPConnect(host, ports, timeout)
+func probeTCPACK(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
+	return probeTCPConnect(ctx, host, ports, timeout)
 }
 
 // probeARP is not supported on non-Linux platforms.
-func probeARP(host string, timeout time.Duration) bool {
+func probeARP(ctx context.Context, host string, timeout time.Duration) bool {
 	return false
 }
