@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/taigrr/gomap"
@@ -26,9 +27,12 @@ var (
 	bannerGrab bool
 	timing     string
 	probeFile  string
-	traceroute bool
-	preferIPv6 bool
-	version    = "dev"
+	traceroute  bool
+	preferIPv6  bool
+	decoySpec   string
+	scriptSpec  string
+	scriptList  bool
+	version     = "dev"
 )
 
 func main() {
@@ -56,6 +60,9 @@ func main() {
 	rootCmd.Flags().StringVar(&probeFile, "service-probes", "", "Path to nmap-service-probes file (default: embedded database)")
 	rootCmd.Flags().BoolVar(&traceroute, "traceroute", false, "Trace the route to the host")
 	rootCmd.Flags().BoolVarP(&preferIPv6, "ipv6", "6", false, "Prefer IPv6 addresses")
+	rootCmd.Flags().StringVarP(&decoySpec, "decoys", "D", "", "Decoy IPs: RND,RND,ME,RND or ip1,ip2,ME")
+	rootCmd.Flags().StringVar(&scriptSpec, "script", "", "Run scripts: default, safe, or script IDs (http-title,ssl-cert)")
+	rootCmd.Flags().BoolVar(&scriptList, "script-list", false, "List available scripts and exit")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -67,6 +74,15 @@ func run(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	startTime := time.Now()
+
+	// Script list mode
+	if scriptList {
+		for _, id := range gomap.DefaultEngine.ListScripts() {
+			s, _ := gomap.DefaultEngine.GetScript(id)
+			fmt.Printf("%-20s %s\n", id, s.Description())
+		}
+		return nil
+	}
 
 	// Host discovery mode
 	if discovery {
@@ -83,6 +99,19 @@ func run(cmd *cobra.Command, args []string) error {
 		ScanType:  st,
 		ProbeFile:  probeFile,
 		PreferIPv6: preferIPv6,
+	}
+
+	// Parse decoys
+	if decoySpec != "" {
+		laddr, err := gomap.GetLocalIP()
+		if err != nil {
+			return fmt.Errorf("getting local IP for decoys: %w", err)
+		}
+		dc, err := gomap.ParseDecoys(decoySpec, laddr)
+		if err != nil {
+			return fmt.Errorf("parsing decoys: %w", err)
+		}
+		opts.Decoys = dc
 	}
 
 	// Apply timing template
@@ -207,6 +236,45 @@ func run(cmd *cobra.Command, args []string) error {
 		} else if !xmlOut && !grepOut {
 			fmt.Println()
 			fmt.Print(tr.String())
+		}
+	}
+
+	// Script execution
+	if scriptSpec != "" && result != nil && len(args) > 0 {
+		var scripts []gomap.Script
+		switch scriptSpec {
+		case "default":
+			scripts = gomap.DefaultEngine.SelectByCategory(gomap.CategoryDefault)
+		case "safe":
+			scripts = gomap.DefaultEngine.SelectByCategory(gomap.CategorySafe)
+		case "all":
+			scripts = gomap.DefaultEngine.SelectByIDs("*")
+		default:
+			ids := strings.Split(scriptSpec, ",")
+			scripts = gomap.DefaultEngine.SelectByIDs(ids...)
+		}
+
+		if len(scripts) > 0 {
+			if !jsonOut && !xmlOut && !grepOut {
+				fmt.Println("\nScript Results:")
+			}
+			for _, p := range result.Ports {
+				if !p.Open {
+					continue
+				}
+				target := gomap.ScriptTarget{
+					Host:    args[0],
+					Port:    p.Port,
+					Service: p.Service,
+					Result:  result,
+				}
+				outputs := gomap.DefaultEngine.RunScripts(ctx, scripts, target, 4)
+				for _, out := range outputs {
+					if !jsonOut && !xmlOut && !grepOut {
+						fmt.Printf("  %d/%s:\n    %s\n", p.Port, p.Service, out.String())
+					}
+				}
+			}
 		}
 	}
 
