@@ -67,6 +67,9 @@ type ScanOptions struct {
 	// HostTimeout is the maximum time to spend on a single host.
 	HostTimeout time.Duration
 
+	// NoPing skips host discovery and treats all hosts as online (like nmap -Pn).
+	NoPing bool
+
 	// NoDNS disables reverse DNS resolution (like nmap -n).
 	NoDNS bool
 
@@ -78,6 +81,17 @@ type ScanOptions struct {
 
 	// SourcePort forces scans to use this source port number.
 	SourcePort int
+
+	// BadSum sends packets with an intentionally incorrect checksum.
+	// Useful for detecting firewalls/IDS that don't verify checksums.
+	BadSum bool
+
+	// TTL sets the IP time-to-live field on outgoing packets.
+	TTL int
+
+	// DataLength pads probe packets with random data to the specified length.
+	// Useful for evading IDS that trigger on specific packet sizes.
+	DataLength int
 
 	// Output configures file output destinations.
 	Output *OutputConfig
@@ -360,6 +374,8 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 		scanPortACK(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
 	case WindowScan:
 		scanPortWindow(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+	case MaimonScan:
+		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpACK, opts.Timeout)
 	case UDPScan:
 		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout)
 	default:
@@ -380,6 +396,8 @@ func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, po
 		flags = 0
 	case ACKScan, WindowScan:
 		flags = tcpACK
+	case MaimonScan:
+		flags = tcpFIN | tcpACK
 	}
 
 	for _, decoyIP := range opts.Decoys.ResolvedIPs() {
