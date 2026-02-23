@@ -1,3 +1,5 @@
+//go:build linux
+
 package gomap
 
 import (
@@ -7,10 +9,45 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
+type tcpHeader struct {
+	SrcPort       uint16
+	DstPort       uint16
+	SeqNum        uint32
+	AckNum        uint32
+	Flags         uint16
+	Window        uint16
+	ChkSum        uint16
+	UrgentPointer uint16
+}
+
+type tcpOption struct {
+	Kind   uint8
+	Length uint8
+	Data   []byte
+}
+
+// scanPortSyn performs a SYN scan on a single port (Linux only).
+func scanPortSyn(resultCh chan<- PortResult, protocol, hostname, service string, port int, laddr string) {
+	result := PortResult{Port: port, Service: service}
+	ack := make(chan bool, 1)
+
+	go recvSynAck(laddr, hostname, uint16(port), ack)
+	sendSyn(laddr, hostname, uint16(randomPort(10000, 65535)), uint16(port))
+
+	select {
+	case r := <-ack:
+		result.Open = r
+		resultCh <- result
+	case <-time.After(3 * time.Second):
+		result.Open = false
+		resultCh <- result
+	}
+}
+
 func sendSyn(laddr string, raddr string, sport uint16, dport uint16) error {
-	// Create TCP packet struct and header
 	op := []tcpOption{
 		{
 			Kind:   2,
@@ -33,14 +70,12 @@ func sendSyn(laddr string, raddr string, sport uint16, dport uint16) error {
 		UrgentPointer: 0,
 	}
 
-	// Connect to network interface to send packet
 	conn, err := net.Dial("ip4:tcp", raddr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	// Build dummy packet for checksum
 	buff := new(bytes.Buffer)
 	binary.Write(buff, binary.BigEndian, tcpH)
 
@@ -52,10 +87,9 @@ func sendSyn(laddr string, raddr string, sport uint16, dport uint16) error {
 
 	binary.Write(buff, binary.BigEndian, [6]byte{})
 	data := buff.Bytes()
-	checkSum := checkSum(data, ipstr2Bytes(laddr), ipstr2Bytes(raddr))
+	checkSum := tcpChecksum(data, ipToBytes(laddr), ipToBytes(raddr))
 	tcpH.ChkSum = checkSum
 
-	// Build final packet
 	buff = new(bytes.Buffer)
 	binary.Write(buff, binary.BigEndian, tcpH)
 
@@ -66,26 +100,22 @@ func sendSyn(laddr string, raddr string, sport uint16, dport uint16) error {
 	}
 	binary.Write(buff, binary.BigEndian, [6]byte{})
 
-	// Send Packet
 	conn.Write(buff.Bytes())
 	return nil
 }
 
 func recvSynAck(laddr string, raddr string, port uint16, res chan<- bool) error {
-	// Checks if the IP address is resolveable
 	listenAddr, err := net.ResolveIPAddr("ip4", laddr)
 	if err != nil {
 		return err
 	}
 
-	// Connect to network interface to listen for packets
 	conn, err := net.ListenIP("ip4:tcp", listenAddr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	// Read each packet looking for ack from raddr on packetport
 	for {
 		buff := make([]byte, 1024)
 		_, addr, err := conn.ReadFrom(buff)
@@ -107,7 +137,7 @@ func recvSynAck(laddr string, raddr string, port uint16, res chan<- bool) error 
 	}
 }
 
-func checkSum(data []byte, src, dst [4]byte) uint16 {
+func tcpChecksum(data []byte, src, dst [4]byte) uint16 {
 	pseudoHeader := []byte{
 		src[0], src[1], src[2], src[3],
 		dst[0], dst[1], dst[2], dst[3],
@@ -136,7 +166,7 @@ func checkSum(data []byte, src, dst [4]byte) uint16 {
 	return ^uint16(sum)
 }
 
-func ipstr2Bytes(addr string) [4]byte {
+func ipToBytes(addr string) [4]byte {
 	s := strings.Split(addr, ".")
 	b0, _ := strconv.Atoi(s[0])
 	b1, _ := strconv.Atoi(s[1])
@@ -145,6 +175,6 @@ func ipstr2Bytes(addr string) [4]byte {
 	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
 }
 
-func random(min, max int) int {
+func randomPort(min, max int) int {
 	return rand.Intn(max-min) + min
 }

@@ -1,44 +1,50 @@
+//go:build linux
+
 package gomap
 
 import (
-	"errors"
-	"fmt"
 	"testing"
 )
 
-func TestLoadArpTable(t *testing.T) {
-	err := LoadArpTable()
+func TestLoadARPTable(t *testing.T) {
+	table, err := LoadARPTable()
 	if err != nil {
-		t.Errorf("Error loading Arp Table: %v", err)
+		t.Skipf("Cannot load ARP table (may not have /proc/net/arp): %v", err)
 	}
-	for _, a := range arpTable {
-		fmt.Println(a)
+	for _, a := range table {
+		t.Logf("%s", a)
 	}
 }
 
-func TestParseArpEntry(t *testing.T) {
-	arpEntries := []struct {
-		name     string
-		input    string
-		err      error
-		arpEntry ArpEntry
-	}{{name: "working line",
-		input: "10.130.1.1       0x1         0x0         00:00:00:00:00:00     *        enp4s0",
-		err:   nil,
-	}, {name: "broken line",
-		input: "10.130.1.1       0x1         0x0         00:00:00:00:00:00     *        enp4s0",
-		err:   errors.New("asdasd"),
-	},
+func TestParseARPEntry(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			name:    "valid entry",
+			input:   "10.130.1.1       0x1         0x0         00:00:00:00:00:00     *        lo",
+			wantErr: false,
+		},
+		{
+			name:    "too few fields",
+			input:   "10.130.1.1 0x1",
+			wantErr: true,
+		},
+		{
+			name:    "invalid MAC",
+			input:   "10.130.1.1       0x1         0x0         ZZZZZZ     *        lo",
+			wantErr: true,
+		},
 	}
 
-	for _, entry := range arpEntries {
-		t.Run(entry.name, func(t *testing.T) {
-			_, e := ParseArpEntry(entry.input)
-			if e != entry.err {
-				t.Errorf("Expected error %v, but got %v!", entry.err, e)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseARPEntry(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseARPEntry() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
 		})
-
 	}
 }

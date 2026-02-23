@@ -1,3 +1,5 @@
+//go:build linux
+
 package gomap
 
 import (
@@ -7,62 +9,92 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
-const ArpFile = "/proc/net/arp"
+const arpFile = "/proc/net/arp"
 
-var arpTable map[string]ArpEntry
+// arpCache stores the most recently loaded ARP table.
+var (
+	arpCache   map[string]ARPEntry
+	arpCacheMu sync.RWMutex
+)
 
-func init() {
-	arpTable = make(map[string]ArpEntry)
-}
-
-type ArpEntry struct {
-	// IP address       HW type     Flags       HW address            Mask     Device
+// ARPEntry represents a single entry in the system ARP table.
+type ARPEntry struct {
 	IP     net.IP
 	MAC    net.HardwareAddr
 	Device *net.Interface
 }
 
-func (a ArpEntry) String() string {
+// String returns a human-readable representation of the ARP entry.
+func (a ARPEntry) String() string {
 	return fmt.Sprintf("%s\t%s\t%s", a.IP.String(), a.MAC.String(), a.Device.Name)
 }
 
-func LoadArpTable() error {
-	arpFile, err := os.Open(ArpFile)
+// LoadARPTable reads and parses the system ARP table from /proc/net/arp.
+// This function is only available on Linux.
+func LoadARPTable() (map[string]ARPEntry, error) {
+	f, err := os.Open(arpFile)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("opening ARP table: %w", err)
 	}
-	defer arpFile.Close()
+	defer f.Close()
 
-	scanner := bufio.NewScanner(arpFile)
+	table := make(map[string]ARPEntry)
+	scanner := bufio.NewScanner(f)
 	scanner.Split(bufio.ScanLines)
 	count := 0
 	for scanner.Scan() {
 		count++
 		if count == 1 {
-			continue
+			continue // skip header
 		}
 		line := scanner.Text()
-		entry, err := ParseArpEntry(line)
+		entry, err := ParseARPEntry(line)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("parsing ARP entry: %w", err)
 		}
-		arpTable[entry.MAC.String()] = entry
+		table[entry.MAC.String()] = entry
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	arpCacheMu.Lock()
+	arpCache = table
+	arpCacheMu.Unlock()
+
+	return table, nil
 }
 
-func ParseArpEntry(line string) (a ArpEntry, err error) {
+// GetARPCache returns the most recently loaded ARP table.
+// Call LoadARPTable first to populate the cache.
+func GetARPCache() map[string]ARPEntry {
+	arpCacheMu.RLock()
+	defer arpCacheMu.RUnlock()
+	return arpCache
+}
+
+// ParseARPEntry parses a single line from /proc/net/arp.
+func ParseARPEntry(line string) (ARPEntry, error) {
+	var a ARPEntry
 	entries := strings.Fields(line)
 	if len(entries) != 6 {
-		return a, errors.New("invalid arp entry line")
+		return a, errors.New("invalid ARP entry: expected 6 fields")
 	}
 	a.IP = net.ParseIP(entries[0])
+	if a.IP == nil {
+		return a, fmt.Errorf("invalid IP address: %s", entries[0])
+	}
+	var err error
 	a.MAC, err = net.ParseMAC(entries[3])
 	if err != nil {
-		return a, err
+		return a, fmt.Errorf("invalid MAC address: %w", err)
 	}
 	a.Device, err = net.InterfaceByName(entries[5])
-	return
+	if err != nil {
+		return a, fmt.Errorf("interface %s: %w", entries[5], err)
+	}
+	return a, nil
 }
