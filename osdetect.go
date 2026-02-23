@@ -172,6 +172,26 @@ func DetectOS(ctx context.Context, host string, openPort, closedPort int, opts S
 	result.Fingerprint = *fp
 	result.Raw = formatFingerprint(fp)
 
+	// Match fingerprint against the OS database
+	osdb, err := DefaultOSDB()
+	if err == nil && osdb != nil {
+		fpMap := fingerprintToMap(fp)
+		dbMatches := osdb.MatchOS(fpMap)
+		for _, dm := range dbMatches {
+			match := OSMatch{
+				Name:     dm.Name,
+				CPE:      dm.CPE,
+				Accuracy: dm.Accuracy,
+			}
+			if len(dm.Classes) > 0 {
+				match.Family = dm.Classes[0].Family
+				match.Generation = dm.Classes[0].Generation
+				match.DeviceType = dm.Classes[0].DeviceType
+			}
+			result.Matches = append(result.Matches, match)
+		}
+	}
+
 	return result, nil
 }
 
@@ -218,6 +238,98 @@ func formatFingerprint(fp *OSFingerprint) string {
 	}
 
 	return b.String()
+}
+
+// fingerprintToMap converts an OSFingerprint struct to the map format
+// expected by probedb.OSDB.MatchOS. Keys use the nmap-os-db format:
+// SEQ, OPS, WIN, T1-T7, U1, IE.
+func fingerprintToMap(fp *OSFingerprint) map[string]map[string]string {
+	m := make(map[string]map[string]string)
+
+	// SEQ
+	m["SEQ"] = map[string]string{
+		"SP":  fmt.Sprintf("%X", fp.SEQ.SP),
+		"GCD": fmt.Sprintf("%X", fp.SEQ.GCD),
+		"ISR": fmt.Sprintf("%X", fp.SEQ.ISR),
+		"TI":  fp.SEQ.TI,
+		"CI":  fp.SEQ.CI,
+		"II":  fp.SEQ.II,
+		"SS":  fp.SEQ.SS,
+		"TS":  fp.SEQ.TS,
+	}
+
+	// OPS
+	ops := make(map[string]string)
+	for i, opt := range fp.OPS.Options {
+		ops[fmt.Sprintf("O%d", i+1)] = opt
+	}
+	m["OPS"] = ops
+
+	// WIN
+	win := make(map[string]string)
+	for i, w := range fp.WIN.Windows {
+		win[fmt.Sprintf("W%d", i+1)] = fmt.Sprintf("%X", w)
+	}
+	m["WIN"] = win
+
+	// T1-T7
+	for i, p := range fp.Probes {
+		r := "N"
+		if p.Responded {
+			r = "Y"
+		}
+		df := "N"
+		if p.DF {
+			df = "Y"
+		}
+		m[fmt.Sprintf("T%d", i+1)] = map[string]string{
+			"R":  r,
+			"DF": df,
+			"T":  fmt.Sprintf("%X", p.TTL),
+			"W":  fmt.Sprintf("%X", p.Window),
+			"S":  p.SeqBehavior,
+			"A":  p.AckBehavior,
+			"F":  p.Flags,
+			"O":  p.Options,
+			"RD": fmt.Sprintf("%X", p.RD),
+			"Q":  p.Quirks,
+		}
+	}
+
+	// U1
+	if fp.U1.Responded {
+		u1 := map[string]string{"R": "Y"}
+		df := "N"
+		if fp.U1.DF {
+			df = "Y"
+		}
+		u1["DF"] = df
+		u1["T"] = fmt.Sprintf("%X", fp.U1.TTL)
+		u1["IPL"] = fmt.Sprintf("%X", fp.U1.IPLen)
+		u1["UN"] = fmt.Sprintf("%X", fp.U1.UnusedField)
+		u1["RIPL"] = fp.U1.RIPL
+		u1["RID"] = fp.U1.RID
+		u1["RIPCK"] = fp.U1.RIPCK
+		u1["RUCK"] = fp.U1.RUCK
+		u1["RUD"] = fp.U1.RUD
+		m["U1"] = u1
+	} else {
+		m["U1"] = map[string]string{"R": "N"}
+	}
+
+	// IE
+	if fp.IE.Responded {
+		m["IE"] = map[string]string{
+			"R":   "Y",
+			"DFI": fp.IE.DFI,
+			"T":   fmt.Sprintf("%X", fp.IE.TTL),
+			"CD":  fp.IE.CD,
+		}
+	} else {
+		m["IE"] = map[string]string{"R": "N"}
+	}
+
+	return m
 }
 
 // sendOSProbes sends the OS detection probe sequence.
