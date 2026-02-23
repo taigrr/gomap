@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,6 +48,39 @@ type ScanOptions struct {
 	// from spoofed source IPs to obscure the real scanner. Only works with
 	// raw socket scan types (SYN, FIN, Xmas, Null, ACK, Window).
 	Decoys *DecoyConfig
+
+	// OpenOnly filters results to only show open ports.
+	OpenOnly bool
+
+	// Reason includes the reason a port is in its state.
+	Reason bool
+
+	// ExcludeHosts is a list of hosts/CIDRs to skip during range scans.
+	ExcludeHosts []string
+
+	// ScanDelay is the minimum delay between probes to the same host.
+	ScanDelay time.Duration
+
+	// MaxRetries is the maximum number of port scan probe retransmissions.
+	MaxRetries int
+
+	// HostTimeout is the maximum time to spend on a single host.
+	HostTimeout time.Duration
+
+	// NoDNS disables reverse DNS resolution (like nmap -n).
+	NoDNS bool
+
+	// AlwaysDNS forces reverse DNS for all IPs (like nmap -R).
+	AlwaysDNS bool
+
+	// Verbose enables verbose output.
+	Verbose bool
+
+	// SourcePort forces scans to use this source port number.
+	SourcePort int
+
+	// Output configures file output destinations.
+	Output *OutputConfig
 }
 
 func (o *ScanOptions) defaults() {
@@ -136,11 +170,20 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 	}
 
 	hosts := CreateHostRange(cidr)
+	excludeSet := buildExcludeSet(opts.ExcludeHosts)
 	var results RangeScanResult
 
 	for _, h := range hosts {
 		if err := ctx.Err(); err != nil {
 			return results, err
+		}
+		if excludeSet[h] {
+			continue
+		}
+		if opts.HostTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
+			defer cancel()
 		}
 		scan, err := scanHostPorts(ctx, h, laddr, opts)
 		if err != nil {
@@ -178,13 +221,17 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 		return nil, fmt.Errorf("resolving %s: %w", hostname, err)
 	}
 
-	hname, err := net.LookupAddr(hostname)
-	if opts.FastScan {
+	var hname []string
+	if opts.NoDNS {
+		hname = []string{hostname}
+	} else {
+		hname, err = net.LookupAddr(hostname)
 		if err != nil {
-			return nil, fmt.Errorf("reverse lookup %s: %w", hostname, err)
+			if opts.FastScan {
+				return nil, fmt.Errorf("reverse lookup %s: %w", hostname, err)
+			}
+			hname = []string{hostname}
 		}
-	} else if err != nil {
-		hname = append(hname, "Unknown")
 	}
 
 	// Determine ports to scan
@@ -229,6 +276,9 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 					return
 				}
 				scanPort(ctx, resultCh, opts, hostname, laddr, job)
+				if opts.ScanDelay > 0 {
+					time.Sleep(opts.ScanDelay)
+				}
 			}
 		}()
 	}
@@ -243,6 +293,13 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 	var results []PortResult
 	count := 0
 	for result := range resultCh {
+		if opts.OpenOnly && !result.Open {
+			count++
+			if opts.ProgressFunc != nil {
+				opts.ProgressFunc(count, tasks)
+			}
+			continue
+		}
 		results = append(results, result)
 		count++
 		if opts.ProgressFunc != nil {
@@ -255,6 +312,25 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 		IP:       addr,
 		Ports:    results,
 	}, nil
+}
+
+// buildExcludeSet creates a set of IPs to exclude from scanning.
+// Supports both individual IPs and CIDR ranges.
+func buildExcludeSet(excludes []string) map[string]bool {
+	if len(excludes) == 0 {
+		return nil
+	}
+	set := make(map[string]bool)
+	for _, e := range excludes {
+		if strings.Contains(e, "/") {
+			for _, ip := range CreateHostRange(e) {
+				set[ip] = true
+			}
+		} else {
+			set[e] = true
+		}
+	}
+	return set
 }
 
 type portJob struct {
@@ -330,8 +406,10 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 	if err != nil {
 		if ctx.Err() != nil {
 			result.State = PortFiltered
+			result.Reason = "no-response"
 		} else {
 			result.State = PortClosed
+			result.Reason = "conn-refused"
 		}
 		resultCh <- result
 		return
@@ -339,6 +417,7 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 	conn.Close()
 	result.Open = true
 	result.State = PortOpen
+	result.Reason = "syn-ack"
 	resultCh <- result
 }
 
