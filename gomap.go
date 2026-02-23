@@ -21,6 +21,7 @@ type ScanResult struct {
 type PortResult struct {
 	Port    int
 	Open    bool
+	State   PortState
 	Service string
 }
 

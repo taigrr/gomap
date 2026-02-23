@@ -11,13 +11,14 @@ import (
 
 // ScanOptions configures a scan.
 type ScanOptions struct {
-	// Protocol is the network protocol to use (default "tcp").
-	Protocol string
+	// ScanType determines the scanning technique (default ConnectScan).
+	ScanType ScanType
 
 	// FastScan uses the common port list instead of the detailed list.
 	FastScan bool
 
-	// Stealth enables SYN scanning (Linux only, requires raw socket privileges).
+	// Stealth is a convenience alias that sets ScanType to SYNScan.
+	// Deprecated: use ScanType directly.
 	Stealth bool
 
 	// Timeout is the per-port connection timeout (default 3s).
@@ -36,8 +37,9 @@ type ScanOptions struct {
 }
 
 func (o *ScanOptions) defaults() {
-	if o.Protocol == "" {
-		o.Protocol = "tcp"
+	// Handle Stealth backwards compat
+	if o.Stealth && o.ScanType == ConnectScan {
+		o.ScanType = SYNScan
 	}
 	if o.Timeout == 0 {
 		o.Timeout = 3 * time.Second
@@ -51,6 +53,14 @@ func (o *ScanOptions) defaults() {
 	}
 }
 
+// protocol returns the appropriate network protocol string for the scan type.
+func (o *ScanOptions) protocol() string {
+	if o.ScanType == UDPScan {
+		return "udp"
+	}
+	return "tcp"
+}
+
 // ScanHost scans a single host for open ports.
 func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResult, error) {
 	opts.defaults()
@@ -60,9 +70,9 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 		return nil, fmt.Errorf("getting local IP: %w", err)
 	}
 
-	if opts.Stealth {
+	if opts.ScanType.RequiresRawSocket() {
 		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for stealth scan)")
+			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
 		}
 	}
 	return scanHostPorts(ctx, hostname, laddr, opts)
@@ -77,9 +87,9 @@ func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 		return nil, fmt.Errorf("getting local IP: %w", err)
 	}
 
-	if opts.Stealth {
+	if opts.ScanType.RequiresRawSocket() {
 		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for stealth scan)")
+			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
 		}
 	}
 
@@ -95,9 +105,9 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 		return nil, fmt.Errorf("getting local IP: %w", err)
 	}
 
-	if opts.Stealth {
+	if opts.ScanType.RequiresRawSocket() {
 		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for stealth scan)")
+			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
 		}
 	}
 
@@ -194,11 +204,7 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 				if ctx.Err() != nil {
 					return
 				}
-				if opts.Stealth {
-					scanPortSyn(resultCh, opts.Protocol, hostname, job.service, job.port, laddr)
-				} else {
-					scanPortConnect(resultCh, opts.Protocol, hostname, job.service, job.port, opts.Timeout)
-				}
+				scanPort(resultCh, opts, hostname, laddr, job)
 			}
 		}()
 	}
@@ -232,17 +238,92 @@ type portJob struct {
 	service string
 }
 
-// scanPortConnect performs a TCP connect scan on a single port.
+// scanPort dispatches a port scan to the appropriate scanner based on scan type.
+func scanPort(resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob) {
+	switch opts.ScanType {
+	case ConnectScan:
+		scanPortConnect(resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout)
+	case SYNScan:
+		scanPortSyn(resultCh, opts.protocol(), hostname, job.service, job.port, laddr)
+	case FINScan:
+		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, tcpFIN, opts.Timeout)
+	case XmasScan:
+		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpPSH|tcpURG, opts.Timeout)
+	case NullScan:
+		scanPortRaw(resultCh, hostname, job.service, job.port, laddr, 0, opts.Timeout)
+	case ACKScan:
+		scanPortACK(resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+	case WindowScan:
+		scanPortWindow(resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+	case UDPScan:
+		scanPortUDP(resultCh, hostname, job.service, job.port, opts.Timeout)
+	default:
+		scanPortConnect(resultCh, "tcp", hostname, job.service, job.port, opts.Timeout)
+	}
+}
+
+// scanPortConnect performs a full TCP connect() scan on a single port.
 func scanPortConnect(resultCh chan<- PortResult, protocol, hostname, service string, port int, timeout time.Duration) {
 	result := PortResult{Port: port, Service: service}
 	address := hostname + ":" + strconv.Itoa(port)
 	conn, err := net.DialTimeout(protocol, address, timeout)
 	if err != nil {
 		result.Open = false
+		result.State = PortClosed
 		resultCh <- result
 		return
 	}
 	conn.Close()
 	result.Open = true
+	result.State = PortOpen
+	resultCh <- result
+}
+
+// scanPortUDP sends an empty UDP packet and listens for ICMP unreachable.
+// No response = open|filtered, ICMP unreachable = closed.
+func scanPortUDP(resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration) {
+	result := PortResult{Port: port, Service: service}
+	address := hostname + ":" + strconv.Itoa(port)
+
+	conn, err := net.DialTimeout("udp", address, timeout)
+	if err != nil {
+		result.State = PortFiltered
+		resultCh <- result
+		return
+	}
+	defer conn.Close()
+
+	// Send empty UDP packet
+	conn.SetDeadline(time.Now().Add(timeout))
+	_, err = conn.Write([]byte{})
+	if err != nil {
+		result.State = PortFiltered
+		resultCh <- result
+		return
+	}
+
+	// Try to read response
+	buf := make([]byte, 1024)
+	conn.SetDeadline(time.Now().Add(timeout))
+	n, err := conn.Read(buf)
+	if err != nil {
+		// Timeout or ICMP unreachable
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			// No response — could be open or filtered
+			result.State = PortOpenFiltered
+			result.Open = true // treat as potentially open
+			resultCh <- result
+			return
+		}
+		// Connection refused (ICMP port unreachable) = closed
+		result.State = PortClosed
+		resultCh <- result
+		return
+	}
+
+	// Got data back — definitely open
+	_ = n
+	result.Open = true
+	result.State = PortOpen
 	resultCh <- result
 }

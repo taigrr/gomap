@@ -14,7 +14,7 @@ import (
 
 var (
 	fast     bool
-	stealth  bool
+	scanType string
 	jsonOut  bool
 	cidr     string
 	topPorts int
@@ -33,7 +33,7 @@ func main() {
 	}
 
 	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
-	rootCmd.Flags().BoolVarP(&stealth, "stealth", "s", false, "SYN stealth scan (Linux only, requires root)")
+	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, udp")
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().StringVarP(&cidr, "cidr", "c", "", "Scan a CIDR range instead of a single host")
 	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
@@ -47,9 +47,14 @@ func run(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
+	st, err := parseScanType(scanType)
+	if err != nil {
+		return err
+	}
+
 	opts := gomap.ScanOptions{
 		FastScan: fast,
-		Stealth:  stealth,
+		ScanType: st,
 		ProgressFunc: func(scanned, total int) {
 			if !jsonOut {
 				fmt.Fprintf(os.Stderr, "\033[2K\rScanning: %d/%d ports", scanned, total)
@@ -94,6 +99,29 @@ func run(cmd *cobra.Command, args []string) error {
 func clearProgress() {
 	if !jsonOut {
 		fmt.Fprintln(os.Stderr)
+	}
+}
+
+func parseScanType(s string) (gomap.ScanType, error) {
+	switch s {
+	case "connect", "tcp", "":
+		return gomap.ConnectScan, nil
+	case "syn", "stealth":
+		return gomap.SYNScan, nil
+	case "fin":
+		return gomap.FINScan, nil
+	case "xmas":
+		return gomap.XmasScan, nil
+	case "null":
+		return gomap.NullScan, nil
+	case "ack":
+		return gomap.ACKScan, nil
+	case "window":
+		return gomap.WindowScan, nil
+	case "udp":
+		return gomap.UDPScan, nil
+	default:
+		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, udp)", s)
 	}
 }
 

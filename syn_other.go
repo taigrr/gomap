@@ -5,10 +5,9 @@ package gomap
 import "fmt"
 
 // scanPortSyn is not supported on non-Linux platforms.
-// Use connect scanning instead (Stealth: false).
+// Falls back to connect scan.
 func scanPortSyn(resultCh chan<- PortResult, protocol, hostname, service string, port int, laddr string) {
-	// Fall back to connect scan on unsupported platforms
-	scanPortConnect(resultCh, protocol, hostname, service, port, 3*1e9) // 3s
+	scanPortConnect(resultCh, protocol, hostname, service, port, 3*1e9)
 }
 
 // ErrStealthNotSupported is returned when stealth scanning is attempted on
