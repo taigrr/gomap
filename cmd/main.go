@@ -27,6 +27,7 @@ var (
 	timing     string
 	probeFile  string
 	traceroute bool
+	preferIPv6 bool
 	version    = "dev"
 )
 
@@ -54,6 +55,7 @@ func main() {
 	rootCmd.Flags().StringVarP(&timing, "timing", "T", "", "Timing template: T0-T5 or paranoid/sneaky/polite/normal/aggressive/insane")
 	rootCmd.Flags().StringVar(&probeFile, "service-probes", "", "Path to nmap-service-probes file (default: embedded database)")
 	rootCmd.Flags().BoolVar(&traceroute, "traceroute", false, "Trace the route to the host")
+	rootCmd.Flags().BoolVarP(&preferIPv6, "ipv6", "6", false, "Prefer IPv6 addresses")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -79,7 +81,8 @@ func run(cmd *cobra.Command, args []string) error {
 	opts := gomap.ScanOptions{
 		FastScan:  fast,
 		ScanType:  st,
-		ProbeFile: probeFile,
+		ProbeFile:  probeFile,
+		PreferIPv6: preferIPv6,
 	}
 
 	// Apply timing template

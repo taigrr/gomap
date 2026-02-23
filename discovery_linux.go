@@ -14,7 +14,11 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 		return false
 	}
 
-	conn, err := net.DialTimeout("ip4:icmp", host, timeout)
+	proto := "ip4:icmp"
+	if IsIPv6(host) {
+		proto = "ip6:ipv6-icmp"
+	}
+	conn, err := net.DialTimeout(proto, host, timeout)
 	if err != nil {
 		return false
 	}
@@ -26,8 +30,12 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 	}
 	conn.SetDeadline(deadline)
 
+	echoType := byte(8) // ICMPv4 Echo Request
+	if IsIPv6(host) {
+		echoType = 128 // ICMPv6 Echo Request
+	}
 	msg := []byte{
-		8, 0, // Type: Echo Request, Code: 0
+		echoType, 0, // Type, Code: 0
 		0, 0, // Checksum
 		0, 1, // Identifier
 		0, 1, // Sequence number
@@ -47,7 +55,13 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 		return false
 	}
 
-	if n >= 20 {
+	if IsIPv6(host) {
+		// ICMPv6: no IP header in response, type 129 = echo reply
+		if n >= 4 && buf[0] == 129 {
+			return true
+		}
+	} else if n >= 20 {
+		// ICMPv4: skip 20-byte IP header, type 0 = echo reply
 		icmpOffset := 20
 		if n > icmpOffset && buf[icmpOffset] == 0 {
 			return true
@@ -71,7 +85,7 @@ func icmpChecksum(data []byte) uint16 {
 
 // probeTCPSYN sends a SYN packet to detect hosts.
 func probeTCPSYN(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
-	laddr, err := GetLocalIP()
+	laddr, err := GetLocalAddr(host)
 	if err != nil || !canSocketBind(laddr) {
 		return probeTCPConnect(ctx, host, ports, timeout)
 	}
@@ -103,7 +117,7 @@ func probeTCPSYN(ctx context.Context, host string, ports []int, timeout time.Dur
 
 // probeTCPACK sends an ACK packet to detect hosts.
 func probeTCPACK(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
-	laddr, err := GetLocalIP()
+	laddr, err := GetLocalAddr(host)
 	if err != nil || !canSocketBind(laddr) {
 		return probeTCPConnect(ctx, host, ports, timeout)
 	}

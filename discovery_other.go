@@ -14,7 +14,11 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 		return false
 	}
 
-	conn, err := net.DialTimeout("ip4:icmp", host, timeout)
+	proto := "ip4:icmp"
+	if IsIPv6(host) {
+		proto = "ip6:ipv6-icmp"
+	}
+	conn, err := net.DialTimeout(proto, host, timeout)
 	if err != nil {
 		return probeTCPConnect(ctx, host, []int{80, 443}, timeout)
 	}
