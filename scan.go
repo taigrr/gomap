@@ -39,6 +39,9 @@ type ScanOptions struct {
 	// If set, probes are loaded from this file instead of the embedded database.
 	// If empty, the embedded probe database is used.
 	ProbeFile string
+
+	// PreferIPv6 makes the scanner prefer IPv6 addresses when resolving hostnames.
+	PreferIPv6 bool
 }
 
 func (o *ScanOptions) defaults() {
@@ -70,7 +73,18 @@ func (o *ScanOptions) protocol() string {
 func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResult, error) {
 	opts.defaults()
 
-	laddr, err := GetLocalIP()
+	// Resolve first to determine address family for local addr
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return nil, fmt.Errorf("resolving %s: %w", hostname, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no IP addresses for host: %s", hostname)
+	}
+
+	// Select preferred address family
+	targetIP := selectIP(ips, opts.PreferIPv6)
+	laddr, err := GetLocalAddr(targetIP.String())
 	if err != nil {
 		return nil, fmt.Errorf("getting local IP: %w", err)
 	}
