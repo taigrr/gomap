@@ -13,27 +13,30 @@ import (
 )
 
 var (
-	fast    bool
-	stealth bool
-	json    bool
-	cidr    string
-	version = "dev"
+	fast     bool
+	stealth  bool
+	jsonOut  bool
+	cidr     string
+	topPorts int
+	version  = "dev"
 )
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:     "gomap [hostname]",
-		Short:   "A pure Go port scanner",
-		Long:    "gomap is a cross-platform, library-importable port scanner written in pure Go.",
-		Version: version,
-		Args:    cobra.MaximumNArgs(1),
-		RunE:    run,
+		Use:          "gomap [hostname]",
+		Short:        "A pure Go port scanner",
+		Long:         "gomap is a cross-platform, library-importable port scanner written in pure Go.",
+		Version:      version,
+		Args:         cobra.MaximumNArgs(1),
+		RunE:         run,
+		SilenceUsage: true,
 	}
 
-	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (common ports only)")
+	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
 	rootCmd.Flags().BoolVarP(&stealth, "stealth", "s", false, "SYN stealth scan (Linux only, requires root)")
-	rootCmd.Flags().BoolVarP(&json, "json", "j", false, "Output as JSON")
+	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().StringVarP(&cidr, "cidr", "c", "", "Scan a CIDR range instead of a single host")
+	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -48,10 +51,18 @@ func run(cmd *cobra.Command, args []string) error {
 		FastScan: fast,
 		Stealth:  stealth,
 		ProgressFunc: func(scanned, total int) {
-			if !json {
+			if !jsonOut {
 				fmt.Fprintf(os.Stderr, "\033[2K\rScanning: %d/%d ports", scanned, total)
 			}
 		},
+	}
+
+	// --top-ports overrides --fast
+	if topPorts > 0 {
+		if topPorts > len(gomap.TopTCPPorts) {
+			topPorts = len(gomap.TopTCPPorts)
+		}
+		opts.Ports = gomap.TopTCPPorts[:topPorts]
 	}
 
 	if cidr != "" {
@@ -59,21 +70,16 @@ func run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		if !json {
-			fmt.Fprintln(os.Stderr) // newline after progress
-		}
+		clearProgress()
 		return printResults(nil, results)
 	}
 
 	if len(args) == 0 {
-		// No host specified, scan local range
 		results, err := gomap.ScanRange(ctx, opts)
 		if err != nil {
 			return err
 		}
-		if !json {
-			fmt.Fprintln(os.Stderr)
-		}
+		clearProgress()
 		return printResults(nil, results)
 	}
 
@@ -81,14 +87,18 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if !json {
-		fmt.Fprintln(os.Stderr)
-	}
+	clearProgress()
 	return printResults(result, nil)
 }
 
+func clearProgress() {
+	if !jsonOut {
+		fmt.Fprintln(os.Stderr)
+	}
+}
+
 func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult) error {
-	if json {
+	if jsonOut {
 		var out string
 		var err error
 		if single != nil {
