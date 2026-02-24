@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -221,10 +222,10 @@ func TestScanResultString(t *testing.T) {
 	if s == "" {
 		t.Error("String() returned empty")
 	}
-	if !containsStr(s, "localhost") {
+	if !strings.Contains(s, "localhost") {
 		t.Error("String() should contain hostname")
 	}
-	if !containsStr(s, "22") {
+	if !strings.Contains(s, "22") {
 		t.Error("String() should contain port 22")
 	}
 }
@@ -742,15 +743,4 @@ func TestTCPServicesHasCommonPorts(t *testing.T) {
 			t.Errorf("TCPServices missing port %d", port)
 		}
 	}
-}
-
-// --- Helper ---
-
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
