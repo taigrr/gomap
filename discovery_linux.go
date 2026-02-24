@@ -49,7 +49,7 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 		return false
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		return false
@@ -95,7 +95,7 @@ func probeTCPSYN(ctx context.Context, host string, ports []int, timeout time.Dur
 			return false
 		}
 		responseCh := make(chan rawResponse, 1)
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 
 		go listenForResponse(laddr, host, uint16(port), sport, responseCh, timeout)
 		time.Sleep(5 * time.Millisecond)
@@ -127,7 +127,7 @@ func probeTCPACK(ctx context.Context, host string, ports []int, timeout time.Dur
 			return false
 		}
 		responseCh := make(chan rawResponse, 1)
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 
 		go listenForResponse(laddr, host, uint16(port), sport, responseCh, timeout)
 		time.Sleep(5 * time.Millisecond)

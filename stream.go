@@ -32,7 +32,7 @@ type ScanEvent struct {
 // This is the preferred API for UIs and interactive applications that want
 // to display results as they arrive.
 func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-chan ScanEvent {
-	out := make(chan ScanEvent, 64)
+	out := make(chan ScanEvent, streamHostEventBuffer)
 	go func() {
 		defer close(out)
 		opts.defaults()
@@ -69,7 +69,7 @@ func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-ch
 // Results from different hosts are interleaved. Each host's completion
 // is signaled by a ScanEvent with Done=true.
 func ScanCIDRStream(ctx context.Context, cidr string, opts ScanOptions) <-chan ScanEvent {
-	out := make(chan ScanEvent, 128)
+	out := make(chan ScanEvent, streamCIDREventBuffer)
 	go func() {
 		defer close(out)
 		opts.defaults()

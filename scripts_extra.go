@@ -172,7 +172,7 @@ func (s *mysqlInfoScript) Run(ctx context.Context, target ScriptTarget) (*Script
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(timeout))
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil || n < 5 {
 		return nil, err
@@ -455,7 +455,7 @@ func (s *bannerScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOut
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(timeout))
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, _ := conn.Read(buf)
 	if n == 0 {
 		return nil, nil

@@ -148,7 +148,7 @@ func sendFlagProbe(laddr, raddr string, port int, flags uint16, timeout time.Dur
 }
 
 func sendProbePacket(laddr, raddr string, port int, flags, window uint16, options []byte, timeout time.Duration) (*probeResponse, error) {
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 
 	// Listen for response
 	network := "ip4"

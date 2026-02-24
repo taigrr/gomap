@@ -84,7 +84,7 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 	}
 
 	// Read response (look for "200")
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		conn.Close()

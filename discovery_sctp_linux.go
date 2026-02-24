@@ -53,7 +53,7 @@ func probeSCTPInit(ctx context.Context, host string, ports []int, timeout time.D
 		}
 
 		// Listen for any SCTP response
-		buf := make([]byte, 1024)
+		buf := make([]byte, readBufferSize)
 		n, _, err := conn.ReadFrom(buf)
 		conn.Close()
 		if err == nil && n > 0 {
@@ -67,7 +67,7 @@ func buildSCTPInit(dport uint16) []byte {
 	// Minimal SCTP packet: common header (12 bytes) + INIT chunk (20 bytes)
 	pkt := make([]byte, 32)
 	// Source port (2 bytes, big-endian)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	pkt[0] = byte(sport >> 8)
 	pkt[1] = byte(sport)
 	// Dest port

@@ -33,7 +33,7 @@ func scanPortRaw(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 	}
 
 	responseCh := make(chan rawResponse, 1)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
 	time.Sleep(5 * time.Millisecond)
 
@@ -71,7 +71,7 @@ func scanPortACK(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 	}
 
 	responseCh := make(chan rawResponse, 1)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
 	time.Sleep(5 * time.Millisecond)
 
@@ -109,7 +109,7 @@ func scanPortWindow(ctx context.Context, resultCh chan<- PortResult, hostname, s
 	}
 
 	responseCh := make(chan rawResponse, 1)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
 	time.Sleep(5 * time.Millisecond)
 
@@ -165,7 +165,7 @@ func listenForResponse(laddr, raddr string, dport, sport uint16, ch chan<- rawRe
 	conn.SetDeadline(time.Now().Add(timeout + 100*time.Millisecond))
 
 	for {
-		buf := make([]byte, 1024)
+		buf := make([]byte, readBufferSize)
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
 			return

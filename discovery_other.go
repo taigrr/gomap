@@ -30,7 +30,9 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 	}
 	conn.SetDeadline(deadline)
 
-	msg := []byte{8, 0, 0, 0, 0, 1, 0, 1}
+	// ICMP echo request: type=8, code=0, checksum=0, id=1, seq=1
+	const icmpEchoRequest byte = 8
+	msg := []byte{icmpEchoRequest, 0, 0, 0, 0, 1, 0, 1}
 	var sum uint32
 	for i := 0; i < len(msg)-1; i += 2 {
 		sum += uint32(msg[i])<<8 | uint32(msg[i+1])
@@ -46,7 +48,7 @@ func probeICMP(ctx context.Context, host string, timeout time.Duration) bool {
 		return false
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	_, err = conn.Read(buf)
 	return err == nil
 }
