@@ -1,7 +1,7 @@
 package gomap
 
 import (
-	"fmt"
+	"errors"
 	"time"
 )
 
@@ -152,4 +152,4 @@ func ParseTimingTemplate(s string) (TimingTemplate, error) {
 }
 
 // ErrInvalidTimingTemplate is returned when an invalid timing template is specified.
-var ErrInvalidTimingTemplate = fmt.Errorf("invalid timing template (valid: T0-T5, paranoid, sneaky, polite, normal, aggressive, insane)")
+var ErrInvalidTimingTemplate = errors.New("invalid timing template (valid: T0-T5, paranoid, sneaky, polite, normal, aggressive, insane)")

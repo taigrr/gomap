@@ -66,9 +66,10 @@ func probeSCTPInit(ctx context.Context, host string, ports []int, timeout time.D
 func buildSCTPInit(dport uint16) []byte {
 	// Minimal SCTP packet: common header (12 bytes) + INIT chunk (20 bytes)
 	pkt := make([]byte, 32)
-	// Source port
-	pkt[0] = 0
-	pkt[1] = byte(randomPort(10000, 65535))
+	// Source port (2 bytes, big-endian)
+	sport := uint16(randomPort(10000, 65535))
+	pkt[0] = byte(sport >> 8)
+	pkt[1] = byte(sport)
 	// Dest port
 	pkt[2] = byte(dport >> 8)
 	pkt[3] = byte(dport)
