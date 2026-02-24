@@ -107,7 +107,7 @@ func main() {
 		SilenceUsage: true,
 	}
 
-	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
+	rootCmd.Flags().BoolVarP(&fast, "fast", "F", false, "Fast scan (top ports only)")
 	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, maimon, udp, sctp-init, sctp-cookie-echo, idle, ftp-bounce")
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().BoolVarP(&xmlOut, "xml", "x", false, "Output as nmap-compatible XML")
