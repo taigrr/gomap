@@ -26,13 +26,14 @@ type tcpOption struct {
 }
 
 func tcpChecksum(data []byte, src, dst [4]byte) uint16 {
+	tcpLen := uint16(len(data))
 	pseudoHeader := []byte{
 		src[0], src[1], src[2], src[3],
 		dst[0], dst[1], dst[2], dst[3],
 		0,
-		6,
-		0,
-		byte(len(data)),
+		6, // TCP protocol number
+		byte(tcpLen >> 8),
+		byte(tcpLen),
 	}
 
 	totalLength := len(pseudoHeader) + len(data)
