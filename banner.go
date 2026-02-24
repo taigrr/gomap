@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,7 +134,7 @@ func sendProbe(ctx context.Context, host string, port int, probe probedb.Service
 	}
 
 	d := net.Dialer{Timeout: probeTimeout}
-	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -210,7 +211,7 @@ func sendProbe(ctx context.Context, host string, port int, probe probedb.Service
 // grabBannerSimple is the fallback banner grabber when no probe database is available.
 func grabBannerSimple(ctx context.Context, host string, port int, timeout time.Duration) (*ServiceVersion, error) {
 	d := net.Dialer{Timeout: timeout}
-	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {

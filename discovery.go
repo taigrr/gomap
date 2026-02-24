@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -187,7 +188,7 @@ func DiscoverHostsStream(ctx context.Context, hosts []string, opts DiscoveryOpti
 func DiscoverCIDR(ctx context.Context, cidr string, opts DiscoveryOptions) ([]HostResult, error) {
 	hosts := CreateHostRange(cidr)
 	if hosts == nil {
-		return nil, fmt.Errorf("invalid CIDR: %s", cidr)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCIDR, cidr)
 	}
 	return DiscoverHosts(ctx, hosts, opts)
 }
@@ -257,7 +258,7 @@ func probeTCPConnect(ctx context.Context, host string, ports []int, timeout time
 		if ctx.Err() != nil {
 			return false
 		}
-		addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			conn.Close()
@@ -278,7 +279,7 @@ func probeUDP(ctx context.Context, host string, ports []int, timeout time.Durati
 		if ctx.Err() != nil {
 			return false
 		}
-		addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		conn, err := d.DialContext(ctx, "udp", addr)
 		if err != nil {
 			continue

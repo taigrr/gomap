@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,8 +30,8 @@ func (s *httpTitleScript) Match(target ScriptTarget) bool {
 }
 
 func (s *httpTitleScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	var conn net.Conn
 	var err error
@@ -127,8 +128,8 @@ func (s *sshHostKeyScript) Match(target ScriptTarget) bool {
 }
 
 func (s *sshHostKeyScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -172,8 +173,8 @@ func (s *sslCertScript) Match(target ScriptTarget) bool {
 }
 
 func (s *sslCertScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := tls.DialWithDialer(&d, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
