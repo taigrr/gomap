@@ -12,7 +12,7 @@ import (
 )
 
 // scanPortProxy performs a connect scan through HTTP CONNECT or SOCKS4 proxies.
-func scanPortProxy(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration, proxies []string, packetTrace bool) {
+func scanPortProxy(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration, proxies []string, tr *tracer) {
 	result := PortResult{Port: port, Service: service}
 
 	target := net.JoinHostPort(hostname, strconv.Itoa(port))
@@ -28,9 +28,7 @@ func scanPortProxy(ctx context.Context, resultCh chan<- PortResult, hostname, se
 		}
 		conn.Close()
 
-		if packetTrace {
-			traceConnect(PacketReceived, "TCP", hostname, port, fmt.Sprintf("Connected via %s", proxyURL))
-		}
+		tr.traceConnect(PacketReceived, "TCP", hostname, port, fmt.Sprintf("Connected via %s", proxyURL))
 		result.Open = true
 		result.State = PortOpen
 		result.Reason = "syn-ack"
