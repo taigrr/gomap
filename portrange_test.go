@@ -15,11 +15,11 @@ func TestParsePortRange(t *testing.T) {
 		{"80,80,80", 1, false}, // dedup
 		{"-", 65535, false},    // all ports
 		{"T:80,U:53", 2, false},
-		{"0", 0, true},         // out of range
-		{"99999", 0, true},     // out of range
-		{"abc", 0, true},       // invalid
-		{"5-3", 0, true},       // reversed range
-		{"", 0, true},          // empty
+		{"0", 0, true},     // out of range
+		{"99999", 0, true}, // out of range
+		{"abc", 0, true},   // invalid
+		{"5-3", 0, true},   // reversed range
+		{"", 0, true},      // empty
 	}
 
 	for _, tt := range tests {

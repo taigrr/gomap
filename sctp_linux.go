@@ -103,12 +103,12 @@ func sendSCTPChunk(ctx context.Context, laddr, raddr string, port int, chunkType
 		chunk = make([]byte, 20)
 		chunk[0] = sctpINIT
 		chunk[1] = 0
-		binary.BigEndian.PutUint16(chunk[2:4], 20) // length
+		binary.BigEndian.PutUint16(chunk[2:4], 20)         // length
 		binary.BigEndian.PutUint32(chunk[4:8], 0xAABBCCDD) // initiate tag
-		binary.BigEndian.PutUint32(chunk[8:12], 65535) // a-rwnd
-		binary.BigEndian.PutUint16(chunk[12:14], 1) // outbound streams
-		binary.BigEndian.PutUint16(chunk[14:16], 1) // inbound streams
-		binary.BigEndian.PutUint32(chunk[16:20], 1) // initial TSN
+		binary.BigEndian.PutUint32(chunk[8:12], 65535)     // a-rwnd
+		binary.BigEndian.PutUint16(chunk[12:14], 1)        // outbound streams
+		binary.BigEndian.PutUint16(chunk[14:16], 1)        // inbound streams
+		binary.BigEndian.PutUint32(chunk[16:20], 1)        // initial TSN
 	} else {
 		// COOKIE-ECHO: type (1), flags (1), length (2), cookie data
 		chunk = make([]byte, 8)

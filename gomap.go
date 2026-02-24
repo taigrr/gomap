@@ -94,13 +94,13 @@ func (results RangeScanResult) String() string {
 
 // JSONResult is the JSON-serializable representation of a single host scan.
 type JSONResult struct {
-	IP       string         `json:"ip"`
-	Hostname string         `json:"hostname"`
-	Active   bool           `json:"active"`
-	StartTime string        `json:"start_time,omitempty"`
-	EndTime   string        `json:"end_time,omitempty"`
-	Duration  string        `json:"duration,omitempty"`
-	Ports    []JSONPort     `json:"ports,omitempty"`
+	IP        string     `json:"ip"`
+	Hostname  string     `json:"hostname"`
+	Active    bool       `json:"active"`
+	StartTime string     `json:"start_time,omitempty"`
+	EndTime   string     `json:"end_time,omitempty"`
+	Duration  string     `json:"duration,omitempty"`
+	Ports     []JSONPort `json:"ports,omitempty"`
 }
 
 // JSONPort is a structured representation of a port result for JSON output.

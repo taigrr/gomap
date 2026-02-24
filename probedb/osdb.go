@@ -213,12 +213,12 @@ func (db *OSDB) MatchOS(fp map[string]map[string]string) []OSMatchResult {
 		}
 
 		results = append(results, OSMatchResult{
-			Name:       entry.Name,
-			Classes:    entry.Classes,
-			CPE:        entry.CPE,
-			Accuracy:   accuracy,
-			Score:      score,
-			MaxScore:   maxScore,
+			Name:     entry.Name,
+			Classes:  entry.Classes,
+			CPE:      entry.CPE,
+			Accuracy: accuracy,
+			Score:    score,
+			MaxScore: maxScore,
 		})
 	}
 
