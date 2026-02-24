@@ -613,7 +613,7 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 
 	// Use fragmented packets if requested
 	if opts.Fragment && opts.ScanType.RequiresRawSocket() {
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 		_ = sendFragmentedPacket(laddr, hostname, sport, uint16(job.port), effectiveFlags, opts.MTU)
 	}
 
@@ -693,7 +693,7 @@ func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, po
 		if addr == realAddr {
 			continue // skip real IP, it sends its own packet
 		}
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 		// Best-effort: ignore errors from decoy packets
 		sendTCPPacket(addr, hostname, sport, uint16(port), flags)
 	}
@@ -759,7 +759,7 @@ func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 	}
 
 	// Try to read response
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		if ctx.Err() != nil {

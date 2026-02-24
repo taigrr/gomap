@@ -182,7 +182,7 @@ func DiscoverHosts(ctx context.Context, hosts []string, opts DiscoveryOptions) (
 // The channel is closed when discovery completes.
 func DiscoverHostsStream(ctx context.Context, hosts []string, opts DiscoveryOptions) <-chan HostResult {
 	opts.defaults()
-	out := make(chan HostResult, 64)
+	out := make(chan HostResult, discoveryStreamBuffer)
 
 	go func() {
 		defer close(out)

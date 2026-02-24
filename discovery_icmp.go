@@ -81,7 +81,7 @@ func probeICMPType(ctx context.Context, host string, icmpType byte, timeout time
 		return false
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		return false

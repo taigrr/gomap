@@ -110,7 +110,7 @@ func probeProtocol(ctx context.Context, laddr, host string, proto int, timeout t
 	}
 
 	// Try to read — any response means protocol is supported
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	_, err = conn.Read(buf)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {

@@ -84,7 +84,7 @@ func sendSCTPChunk(ctx context.Context, laddr, raddr string, port int, chunkType
 	syscall.SetsockoptTimeval(fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv)
 
 	// Build SCTP packet: common header (12 bytes) + chunk
-	srcPort := uint16(randomPort(10000, 65535))
+	srcPort := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	dstPort := uint16(port)
 
 	// Common header: src port (2), dst port (2), vtag (4), checksum (4)
