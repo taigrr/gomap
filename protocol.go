@@ -1,9 +1,6 @@
 package gomap
 
-import (
-	"fmt"
-	"sync"
-)
+import "fmt"
 
 // ProtocolResult represents the result of an IP protocol scan for one protocol.
 type ProtocolResult struct {
@@ -13,9 +10,6 @@ type ProtocolResult struct {
 	State    PortState
 	Reason   string
 }
-
-// syncWaitGroup is a type alias used to avoid naming conflicts.
-type syncWaitGroup = sync.WaitGroup
 
 // defaultProtocols returns the common IP protocol numbers to scan.
 // This is a curated list matching nmap's default protocol scan set.
