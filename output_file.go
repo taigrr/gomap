@@ -16,13 +16,16 @@ type OutputConfig struct {
 	// GrepFile is the path for grepable output (-oG).
 	GrepFile string
 
+	// ScriptKiddieFile is the path for script kiddie output (-oS).
+	ScriptKiddieFile string
+
 	// Append appends to output files instead of overwriting.
 	Append bool
 }
 
 // HasFileOutput returns true if any file output is configured.
 func (o *OutputConfig) HasFileOutput() bool {
-	return o.NormalFile != "" || o.XMLFile != "" || o.GrepFile != ""
+	return o.NormalFile != "" || o.XMLFile != "" || o.GrepFile != "" || o.ScriptKiddieFile != ""
 }
 
 // WriteNormal writes human-readable output to the configured file.
@@ -59,6 +62,12 @@ func (o *OutputConfig) WriteAll(normal string, xmlData []byte, grep string) erro
 	}
 	if err := o.WriteGrep(grep); err != nil {
 		return fmt.Errorf("writing grepable output: %w", err)
+	}
+	if o.ScriptKiddieFile != "" {
+		sk := ToScriptKiddie(normal)
+		if err := o.writeFile(o.ScriptKiddieFile, sk); err != nil {
+			return fmt.Errorf("writing script kiddie output: %w", err)
+		}
 	}
 	return nil
 }
