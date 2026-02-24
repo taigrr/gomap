@@ -48,14 +48,28 @@ func scanPortFTPBounce(ctx context.Context, resultCh chan<- PortResult, targetHo
 	reader := bufio.NewReader(conn)
 
 	// Read banner
-	readFTPResponse(reader)
+	if _, err := readFTPResponse(reader); err != nil {
+		result.setStateReason(PortFiltered, "ftp-banner-error")
+		resultCh <- result
+		return
+	}
 
 	// Login
 	fmt.Fprintf(conn, "USER %s\r\n", ftp.Username)
-	resp := readFTPResponse(reader)
+	resp, err := readFTPResponse(reader)
+	if err != nil {
+		result.setStateReason(PortFiltered, "ftp-read-error")
+		resultCh <- result
+		return
+	}
 	if strings.HasPrefix(resp, "331") {
 		fmt.Fprintf(conn, "PASS %s\r\n", ftp.Password)
-		resp = readFTPResponse(reader)
+		resp, err = readFTPResponse(reader)
+		if err != nil {
+			result.setStateReason(PortFiltered, "ftp-read-error")
+			resultCh <- result
+			return
+		}
 	}
 	if !strings.HasPrefix(resp, "230") {
 		result.setStateReason(PortFiltered, "ftp-login-failed")
@@ -87,7 +101,12 @@ func scanPortFTPBounce(ctx context.Context, resultCh chan<- PortResult, targetHo
 	p2 := port % 256
 	portCmd := fmt.Sprintf("PORT %d,%d,%d,%d,%d,%d\r\n", ip4[0], ip4[1], ip4[2], ip4[3], p1, p2)
 	fmt.Fprint(conn, portCmd)
-	resp = readFTPResponse(reader)
+	resp, err = readFTPResponse(reader)
+	if err != nil {
+		result.setStateReason(PortFiltered, "ftp-read-error")
+		resultCh <- result
+		return
+	}
 	if !strings.HasPrefix(resp, "200") {
 		result.setStateReason(PortFiltered, "port-rejected")
 		resultCh <- result
@@ -96,15 +115,15 @@ func scanPortFTPBounce(ctx context.Context, resultCh chan<- PortResult, targetHo
 
 	// LIST triggers the FTP server to connect to the target port
 	fmt.Fprint(conn, "LIST\r\n")
-	resp = readFTPResponse(reader)
+	resp, _ = readFTPResponse(reader)
 
 	// 150/226 = connection successful = port open
 	// 425/426 = connection failed = port closed
 	if strings.HasPrefix(resp, "150") || strings.HasPrefix(resp, "226") {
 		result.setStateReason(PortOpen, "ftp-bounce")
-		// Read the completion response
+		// Read the completion response (best-effort)
 		if strings.HasPrefix(resp, "150") {
-			readFTPResponse(reader)
+			readFTPResponse(reader) //nolint:errcheck // completion response is optional
 		}
 	} else {
 		result.setStateReason(PortClosed, "ftp-bounce")
@@ -114,7 +133,7 @@ func scanPortFTPBounce(ctx context.Context, resultCh chan<- PortResult, targetHo
 	resultCh <- result
 }
 
-func readFTPResponse(reader *bufio.Reader) string {
-	line, _ := reader.ReadString('\n')
-	return strings.TrimSpace(line)
+func readFTPResponse(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	return strings.TrimSpace(line), err
 }

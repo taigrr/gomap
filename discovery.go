@@ -119,6 +119,18 @@ type HostResult struct {
 	Latency  time.Duration
 }
 
+// String returns a human-readable representation of the host discovery result.
+func (r HostResult) String() string {
+	status := "down"
+	if r.Alive {
+		status = fmt.Sprintf("up (method=%s, latency=%s)", r.Method, r.Latency)
+	}
+	if r.Hostname != "" {
+		return fmt.Sprintf("%s (%s): %s", r.IP, r.Hostname, status)
+	}
+	return fmt.Sprintf("%s: %s", r.IP, status)
+}
+
 // DiscoverHosts probes a list of IP addresses to determine which are alive.
 func DiscoverHosts(ctx context.Context, hosts []string, opts DiscoveryOptions) ([]HostResult, error) {
 	opts.defaults()
