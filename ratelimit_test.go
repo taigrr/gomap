@@ -5,51 +5,66 @@ import (
 	"time"
 )
 
-func TestRateLimiterMaxRate(t *testing.T) {
-	rl := NewRateLimiter(0, 100) // 100 pps = 10ms interval
+func TestNewRateLimiter(t *testing.T) {
+	rl := NewRateLimiter(0, 100)
 	if rl.interval != 10*time.Millisecond {
-		t.Errorf("interval = %v, want 10ms", rl.interval)
+		t.Errorf("expected 10ms interval for 100 pps, got %v", rl.interval)
 	}
 
-	start := time.Now()
-	for i := 0; i < 5; i++ {
-		rl.Wait()
-	}
-	elapsed := time.Since(start)
-
-	// Should take at least 40ms (5 waits - first is free, 4 * 10ms)
-	if elapsed < 35*time.Millisecond {
-		t.Errorf("5 waits took %v, expected >= 40ms", elapsed)
+	rl2 := NewRateLimiter(0, 0)
+	if rl2.interval != 0 {
+		t.Errorf("expected 0 interval for unlimited, got %v", rl2.interval)
 	}
 }
 
-func TestRateLimiterNoLimit(t *testing.T) {
-	rl := NewRateLimiter(0, 0)
+func TestRateLimiterWait(t *testing.T) {
+	rl := NewRateLimiter(0, 1000)
+	start := time.Now()
+	for i := 0; i < 10; i++ {
+		rl.Wait()
+	}
+	elapsed := time.Since(start)
+	// 10 packets at 1000 pps = ~9ms minimum (first is instant)
+	if elapsed < 8*time.Millisecond {
+		t.Errorf("rate limiter too fast: 10 packets in %v", elapsed)
+	}
+}
+
+func TestRateLimiterWaitUnlimited(t *testing.T) {
+	rl := NewRateLimiter(10, 0)
 	start := time.Now()
 	for i := 0; i < 100; i++ {
 		rl.Wait()
 	}
-	if time.Since(start) > 50*time.Millisecond {
-		t.Error("unlimited rate limiter should not block")
+	elapsed := time.Since(start)
+	// Unlimited should be nearly instant
+	if elapsed > 10*time.Millisecond {
+		t.Errorf("unlimited rate limiter too slow: %v", elapsed)
 	}
 }
 
 func TestRateLimiterNil(t *testing.T) {
 	var rl *RateLimiter
-	rl.Wait() // should not panic
+	// Should not panic
+	rl.Wait()
 }
 
-func TestRateLimiterMinWorkers(t *testing.T) {
-	rl := NewRateLimiter(1000, 0) // 1000 pps
-	w := rl.MinWorkers(3 * time.Second)
-	if w != 3000 {
-		t.Errorf("MinWorkers = %d, want 3000", w)
+func TestMinWorkers(t *testing.T) {
+	tests := []struct {
+		minRate int
+		timeout time.Duration
+		want    int
+	}{
+		{0, 3 * time.Second, 0},
+		{100, 3 * time.Second, 300},
+		{10, 1 * time.Second, 10},
+		{1, 100 * time.Millisecond, 1},
 	}
-}
-
-func TestRateLimiterMinWorkersZero(t *testing.T) {
-	rl := NewRateLimiter(0, 0)
-	if rl.MinWorkers(time.Second) != 0 {
-		t.Error("MinWorkers should be 0 with no min rate")
+	for _, tt := range tests {
+		rl := NewRateLimiter(tt.minRate, 0)
+		got := rl.MinWorkers(tt.timeout)
+		if got != tt.want {
+			t.Errorf("MinWorkers(%d, %v) = %d, want %d", tt.minRate, tt.timeout, got, tt.want)
+		}
 	}
 }
