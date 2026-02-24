@@ -29,8 +29,8 @@ func newTracer(w io.Writer) *tracer {
 		return nil
 	}
 	return &tracer{
-		writer: w,
-		start:  time.Now(),
+		writer:  w,
+		start:   time.Now(),
 		started: true,
 	}
 }

@@ -133,9 +133,9 @@ type XMLOSFingerprint struct {
 
 // XMLTrace represents traceroute data.
 type XMLTrace struct {
-	Port  int        `xml:"port,attr,omitempty"`
-	Proto string     `xml:"proto,attr,omitempty"`
-	Hops  []XMLHop   `xml:"hop"`
+	Port  int      `xml:"port,attr,omitempty"`
+	Proto string   `xml:"proto,attr,omitempty"`
+	Hops  []XMLHop `xml:"hop"`
 }
 
 // XMLHop is a single traceroute hop.
@@ -148,9 +148,9 @@ type XMLHop struct {
 
 // XMLScript contains script output for a port or host.
 type XMLScript struct {
-	ID       string           `xml:"id,attr"`
-	Output   string           `xml:"output,attr"`
-	Elements []XMLScriptElem  `xml:"elem,omitempty"`
+	ID       string          `xml:"id,attr"`
+	Output   string          `xml:"output,attr"`
+	Elements []XMLScriptElem `xml:"elem,omitempty"`
 }
 
 // XMLScriptElem is a key-value element within script output.

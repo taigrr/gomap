@@ -15,45 +15,45 @@ import (
 )
 
 var (
-	fast       bool
-	scanType   string
-	jsonOut    bool
-	xmlOut     bool
-	grepOut    bool
-	cidr       string
-	topPorts   int
-	discovery  bool
-	osDetect   bool
-	bannerGrab bool
-	timing     string
-	probeFile  string
-	traceroute   bool
-	preferIPv6   bool
-	decoySpec    string
-	scriptSpec   string
-	scriptList   bool
-	portSpec     string
-	openOnly     bool
-	reason       bool
-	excludeHosts string
-	scanDelay    time.Duration
-	maxRetries   int
-	hostTimeout  time.Duration
-	noDNS        bool
-	alwaysDNS    bool
-	verbose      bool
-	sourcePort   int
-	outputNormal string
-	outputXML    string
-	outputGrep   string
-	outputAll    string
-	appendOutput bool
-	noPing       bool
-	inputFile    string
-	excludeFile  string
-	listScan     bool
-	badSum       bool
-	ttl          int
+	fast             bool
+	scanType         string
+	jsonOut          bool
+	xmlOut           bool
+	grepOut          bool
+	cidr             string
+	topPorts         int
+	discovery        bool
+	osDetect         bool
+	bannerGrab       bool
+	timing           string
+	probeFile        string
+	traceroute       bool
+	preferIPv6       bool
+	decoySpec        string
+	scriptSpec       string
+	scriptList       bool
+	portSpec         string
+	openOnly         bool
+	reason           bool
+	excludeHosts     string
+	scanDelay        time.Duration
+	maxRetries       int
+	hostTimeout      time.Duration
+	noDNS            bool
+	alwaysDNS        bool
+	verbose          bool
+	sourcePort       int
+	outputNormal     string
+	outputXML        string
+	outputGrep       string
+	outputAll        string
+	appendOutput     bool
+	noPing           bool
+	inputFile        string
+	excludeFile      string
+	listScan         bool
+	badSum           bool
+	ttl              int
 	dataLength       int
 	minRate          int
 	maxRate          int
@@ -277,28 +277,28 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := gomap.ScanOptions{
-		FastScan:    fast,
-		ScanType:    st,
-		ProbeFile:   probeFile,
-		PreferIPv6:  preferIPv6,
-		OpenOnly:    openOnly,
-		Reason:      reason,
-		ScanDelay:   scanDelay,
-		MaxRetries:  maxRetries,
-		HostTimeout: hostTimeout,
-		NoDNS:       noDNS,
-		AlwaysDNS:   alwaysDNS,
-		Verbose:     verbose,
-		SourcePort:  sourcePort,
-		NoPing:      noPing,
-		BadSum:      badSum,
-		TTL:         ttl,
-		DataLength:       dataLength,
-		MinRate:          minRate,
-		MaxRate:          maxRate,
-		VersionIntensity: versionIntensity,
-		PacketTrace:      packetTrace,
-		OSScanLimit:      osscanLimit,
+		FastScan:          fast,
+		ScanType:          st,
+		ProbeFile:         probeFile,
+		PreferIPv6:        preferIPv6,
+		OpenOnly:          openOnly,
+		Reason:            reason,
+		ScanDelay:         scanDelay,
+		MaxRetries:        maxRetries,
+		HostTimeout:       hostTimeout,
+		NoDNS:             noDNS,
+		AlwaysDNS:         alwaysDNS,
+		Verbose:           verbose,
+		SourcePort:        sourcePort,
+		NoPing:            noPing,
+		BadSum:            badSum,
+		TTL:               ttl,
+		DataLength:        dataLength,
+		MinRate:           minRate,
+		MaxRate:           maxRate,
+		VersionIntensity:  versionIntensity,
+		PacketTrace:       packetTrace,
+		OSScanLimit:       osscanLimit,
 		OSScanGuess:       osscanGuess,
 		Fragment:          fragment || mtu > 0,
 		MTU:               mtu,
@@ -309,12 +309,12 @@ func run(cmd *cobra.Command, args []string) error {
 		MaxRTTTimeout:     maxRTTTimeout,
 		InitialRTTTimeout: initialRTT,
 		SpoofSourceIP:     spoofSource,
-		DataString:         dataString,
-		MaxOSTries:         maxOSTries,
-		VersionTrace:       versionTrace,
-		ScriptTrace:        scriptTrace,
-		MinHostgroup:       minHostgroup,
-		MaxHostgroup:       maxHostgroup,
+		DataString:        dataString,
+		MaxOSTries:        maxOSTries,
+		VersionTrace:      versionTrace,
+		ScriptTrace:       scriptTrace,
+		MinHostgroup:      minHostgroup,
+		MaxHostgroup:      maxHostgroup,
 	}
 
 	// --iflist: print interfaces and exit

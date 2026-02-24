@@ -76,9 +76,9 @@ func buildSCTPInit(dport uint16) []byte {
 	// Checksum (simplified — set to 0)
 
 	// INIT chunk
-	pkt[12] = 1    // chunk type = INIT
-	pkt[13] = 0    // flags
-	pkt[14] = 0    // length (20)
+	pkt[12] = 1 // chunk type = INIT
+	pkt[13] = 0 // flags
+	pkt[14] = 0 // length (20)
 	pkt[15] = 20
 	// Initiate tag
 	pkt[16] = 0x12

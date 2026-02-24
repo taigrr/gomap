@@ -50,6 +50,11 @@ func ApplyTiming(opts *ScanOptions, template TimingTemplate) {
 	if opts.Workers == 0 {
 		opts.Workers = cfg.Workers
 	}
+	opts.ScanDelay = cfg.ProbeDelay
+	opts.MaxRetries = cfg.MaxRetries
+	if cfg.HostTimeout > 0 {
+		opts.HostTimeout = cfg.HostTimeout
+	}
 }
 
 // ApplyTimingDiscovery configures DiscoveryOptions based on a timing template.

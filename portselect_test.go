@@ -49,13 +49,13 @@ func TestParseScanFlags(t *testing.T) {
 		want uint16
 		err  bool
 	}{
-		{"S", 0x0002, false},     // SYN
-		{"SF", 0x0003, false},    // SYN+FIN
-		{"SA", 0x0012, false},    // SYN+ACK
-		{"SAPF", 0x001B, false},  // SYN+ACK+PSH+FIN
-		{"0x29", 0x29, false},    // hex
-		{"", 0, false},           // empty
-		{"Z", 0, true},           // invalid flag
+		{"S", 0x0002, false},    // SYN
+		{"SF", 0x0003, false},   // SYN+FIN
+		{"SA", 0x0012, false},   // SYN+ACK
+		{"SAPF", 0x001B, false}, // SYN+ACK+PSH+FIN
+		{"0x29", 0x29, false},   // hex
+		{"", 0, false},          // empty
+		{"Z", 0, true},          // invalid flag
 	}
 	for _, tt := range tests {
 		got, err := ParseScanFlags(tt.spec)

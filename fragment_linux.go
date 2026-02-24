@@ -34,8 +34,8 @@ func sendFragmentedPacket(laddr, raddr string, sport, dport, flags uint16, mtu i
 	binary.BigEndian.PutUint16(tcp[2:4], dport)
 	binary.BigEndian.PutUint32(tcp[4:8], 0x12345678) // seq
 	binary.BigEndian.PutUint32(tcp[8:12], 0)         // ack
-	tcp[12] = 0x50                                    // data offset = 5 words
-	tcp[13] = byte(flags)                             // flags
+	tcp[12] = 0x50                                   // data offset = 5 words
+	tcp[13] = byte(flags)                            // flags
 	binary.BigEndian.PutUint16(tcp[14:16], 8192)     // window
 
 	// Checksum

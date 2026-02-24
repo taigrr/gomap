@@ -27,11 +27,11 @@ type ResumeState struct {
 
 // ResumeOptions is a serializable subset of ScanOptions.
 type ResumeOptions struct {
-	ScanType  string `json:"scanType"`
-	FastScan  bool   `json:"fastScan"`
-	TopPorts  int    `json:"topPorts,omitempty"`
-	PortSpec  string `json:"portSpec,omitempty"`
-	Timing    string `json:"timing,omitempty"`
+	ScanType string `json:"scanType"`
+	FastScan bool   `json:"fastScan"`
+	TopPorts int    `json:"topPorts,omitempty"`
+	PortSpec string `json:"portSpec,omitempty"`
+	Timing   string `json:"timing,omitempty"`
 }
 
 // SaveResume writes the resume state to a file.

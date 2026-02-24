@@ -22,8 +22,10 @@ func init() {
 // smtpCommandsScript queries SMTP for supported commands (EHLO).
 type smtpCommandsScript struct{}
 
-func (s *smtpCommandsScript) ID() string          { return "smtp-commands" }
-func (s *smtpCommandsScript) Description() string { return "Retrieves SMTP server supported commands via EHLO" }
+func (s *smtpCommandsScript) ID() string { return "smtp-commands" }
+func (s *smtpCommandsScript) Description() string {
+	return "Retrieves SMTP server supported commands via EHLO"
+}
 func (s *smtpCommandsScript) Categories() []ScriptCategory {
 	return []ScriptCategory{CategoryDefault, CategoryDiscovery, CategorySafe}
 }
@@ -144,8 +146,10 @@ func (s *ftpAnonScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOu
 // mysqlInfoScript retrieves MySQL server greeting info.
 type mysqlInfoScript struct{}
 
-func (s *mysqlInfoScript) ID() string          { return "mysql-info" }
-func (s *mysqlInfoScript) Description() string { return "Retrieves MySQL server version and capabilities" }
+func (s *mysqlInfoScript) ID() string { return "mysql-info" }
+func (s *mysqlInfoScript) Description() string {
+	return "Retrieves MySQL server version and capabilities"
+}
 func (s *mysqlInfoScript) Categories() []ScriptCategory {
 	return []ScriptCategory{CategoryDefault, CategoryDiscovery, CategorySafe}
 }
@@ -351,8 +355,10 @@ func (s *httpHeadersScript) Run(ctx context.Context, target ScriptTarget) (*Scri
 // httpRobotsScript retrieves robots.txt.
 type httpRobotsScript struct{}
 
-func (s *httpRobotsScript) ID() string          { return "http-robots" }
-func (s *httpRobotsScript) Description() string { return "Retrieves and parses robots.txt disallowed entries" }
+func (s *httpRobotsScript) ID() string { return "http-robots" }
+func (s *httpRobotsScript) Description() string {
+	return "Retrieves and parses robots.txt disallowed entries"
+}
 func (s *httpRobotsScript) Categories() []ScriptCategory {
 	return []ScriptCategory{CategoryDiscovery, CategorySafe}
 }

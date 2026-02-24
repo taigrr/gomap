@@ -8,12 +8,12 @@ import (
 
 // InterfaceInfo contains information about a network interface.
 type InterfaceInfo struct {
-	Name    string
-	Index   int
-	MTU     int
-	Flags   string
-	MAC     string
-	Addrs   []string
+	Name  string
+	Index int
+	MTU   int
+	Flags string
+	MAC   string
+	Addrs []string
 }
 
 // ListInterfaces returns information about all network interfaces,
