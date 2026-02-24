@@ -53,10 +53,12 @@ func (rl *RateLimiter) WaitCtx(ctx context.Context) {
 	elapsed := time.Since(rl.last)
 	if elapsed < rl.interval {
 		wait := rl.interval - elapsed
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-time.After(wait):
+		case <-timer.C:
 		}
 	}
 	rl.last = time.Now()

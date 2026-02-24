@@ -96,16 +96,19 @@ func main() {
 ### Scan Options
 
 ```go
-type ScanOptions struct {
-    Protocol     string              // "tcp" (default)
-    FastScan     bool                // Common ports only
-    Stealth      bool                // SYN scan (Linux only)
-    Timeout      time.Duration       // Per-port timeout (default 3s)
-    Workers      int                 // Concurrent goroutines
-    Ports        []int               // Custom port list (nil = use defaults)
-    ProgressFunc func(scanned, total int) // Progress callback
+opts := gomap.ScanOptions{
+    ScanType:         gomap.ConnectScan, // SYNScan, FINScan, UDPScan, etc.
+    FastScan:         true,              // Common ports only
+    Timeout:          3 * time.Second,   // Per-port timeout
+    Workers:          500,               // Concurrent goroutines
+    Ports:            []int{80, 443},    // Custom port list (nil = defaults)
+    OpenOnly:         true,              // Filter to open ports only
+    VersionIntensity: 7,                 // Service probe depth (0-9)
+    ProgressFunc:     func(scanned, total int) { /* ... */ },
 }
 ```
+
+See the `ScanOptions` struct in the [GoDoc](https://pkg.go.dev/github.com/taigrr/gomap) for the full list of options including timing, rate limiting, proxies, decoys, and more.
 
 ### Scanning ranges
 
@@ -115,6 +118,37 @@ results, err := gomap.ScanCIDR(ctx, "10.0.0.0/24", opts)
 
 // Scan local network
 results, err := gomap.ScanRange(ctx, opts)
+```
+
+### Streaming API
+
+For UIs and interactive applications that want results as they arrive:
+
+```go
+events := gomap.ScanHostStream(ctx, "example.com", opts)
+for ev := range events {
+    if ev.Port != nil && ev.Port.Open {
+        fmt.Printf("Found open port: %d\n", ev.Port.Port)
+    }
+    if ev.Done {
+        fmt.Println("Scan complete")
+    }
+}
+```
+
+### Host Discovery
+
+```go
+hosts := gomap.CreateHostRange("192.168.1.0/24")
+results, err := gomap.DiscoverHosts(ctx, hosts, gomap.DiscoveryOptions{
+    Methods: []gomap.DiscoveryMethod{gomap.DiscoveryICMP, gomap.DiscoveryConnect},
+    Timeout: 2 * time.Second,
+})
+for _, r := range results {
+    if r.Alive {
+        fmt.Printf("%s is up (%s)\n", r.IP, r.Latency)
+    }
+}
 ```
 
 ### Utilities
@@ -135,8 +169,8 @@ hosts := gomap.CreateHostRange("192.168.1.0/24")
 // MAC vendor lookup (37K OUI entries)
 vendor := gomap.LookupMACVendor("00:50:56:12:34:56") // "VMware"
 
-// Banner grabbing
-sv, err := gomap.GrabBanner(ctx, "example.com", 22, 3*time.Second)
+// Banner grabbing (nil uses embedded probe DB)
+sv, err := gomap.GrabBanner(ctx, "example.com", 22, 3*time.Second, nil)
 // sv.Service = "ssh", sv.Banner = "SSH-2.0-OpenSSH_9.0"
 
 // Timing templates
@@ -216,10 +250,10 @@ This fetches the latest IANA CSV and regenerates `services_generated.go`.
 - [x] XML output (nmap-compatible)
 - [x] Grepable output (-oG)
 - [x] MAC address vendor lookup (37K OUI entries)
-- [ ] OS fingerprint database matching
-- [ ] IPv6 support
-- [ ] Traceroute
-- [ ] NSE-style scripting
+- [x] OS fingerprint database matching (nmap-os-db)
+- [x] Traceroute (UDP-based)
+- [x] NSE-style scripting engine (http-title, ssh-hostkey, ssl-cert, smtp-commands, ftp-anon, mysql-info, redis-info)
+- [ ] IPv6 scanning support
 
 ## License
 

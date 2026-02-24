@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -52,7 +53,7 @@ func IPProtocolScan(ctx context.Context, host string, opts ScanOptions) ([]Proto
 		workers = len(protocols)
 	}
 
-	var wg syncWaitGroup
+	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
