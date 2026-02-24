@@ -47,7 +47,7 @@ func ExpandTargets(targets []string) ([]string, error) {
 		if strings.Contains(t, "/") {
 			hosts := CreateHostRange(t)
 			if hosts == nil {
-				return nil, fmt.Errorf("invalid CIDR: %s", t)
+				return nil, fmt.Errorf("%w: %s", ErrInvalidCIDR, t)
 			}
 			expanded = append(expanded, hosts...)
 		} else {
