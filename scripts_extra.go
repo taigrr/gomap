@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,8 +37,8 @@ func (s *smtpCommandsScript) Match(target ScriptTarget) bool {
 }
 
 func (s *smtpCommandsScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -108,8 +109,8 @@ func (s *ftpAnonScript) Match(target ScriptTarget) bool {
 }
 
 func (s *ftpAnonScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -160,8 +161,8 @@ func (s *mysqlInfoScript) Match(target ScriptTarget) bool {
 }
 
 func (s *mysqlInfoScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -216,8 +217,8 @@ func (s *redisInfoScript) Match(target ScriptTarget) bool {
 }
 
 func (s *redisInfoScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -302,8 +303,8 @@ func (s *httpHeadersScript) Match(target ScriptTarget) bool {
 }
 
 func (s *httpHeadersScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -369,8 +370,8 @@ func (s *httpRobotsScript) Match(target ScriptTarget) bool {
 }
 
 func (s *httpRobotsScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
-	timeout := 5 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	timeout := defaultScriptTimeout
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -444,7 +445,7 @@ func (s *bannerScript) Match(target ScriptTarget) bool {
 
 func (s *bannerScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOutput, error) {
 	timeout := 3 * time.Second
-	addr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
+	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)

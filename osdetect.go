@@ -282,16 +282,16 @@ func formatFingerprint(fp *OSFingerprint) string {
 
 	// T1-T7 lines
 	for i, p := range fp.Probes {
-		r := "N"
+		responded := "N"
 		if p.Responded {
-			r = "Y"
+			responded = "Y"
 		}
 		df := "N"
 		if p.DF {
 			df = "Y"
 		}
 		fmt.Fprintf(&b, "T%d(R=%s%%DF=%s%%T=%X%%W=%X%%S=%s%%A=%s%%F=%s%%O=%s%%RD=%X%%Q=%s)\n",
-			i+1, r, df, p.TTL, p.Window, p.SeqBehavior, p.AckBehavior, p.Flags, p.Options, p.RD, p.Quirks)
+			i+1, responded, df, p.TTL, p.Window, p.SeqBehavior, p.AckBehavior, p.Flags, p.Options, p.RD, p.Quirks)
 	}
 
 	return b.String()
@@ -301,10 +301,10 @@ func formatFingerprint(fp *OSFingerprint) string {
 // expected by probedb.OSDB.MatchOS. Keys use the nmap-os-db format:
 // SEQ, OPS, WIN, T1-T7, U1, IE.
 func fingerprintToMap(fp *OSFingerprint) map[string]map[string]string {
-	m := make(map[string]map[string]string)
+	sections := make(map[string]map[string]string)
 
 	// SEQ
-	m["SEQ"] = map[string]string{
+	sections["SEQ"] = map[string]string{
 		"SP":  fmt.Sprintf("%X", fp.SEQ.SP),
 		"GCD": fmt.Sprintf("%X", fp.SEQ.GCD),
 		"ISR": fmt.Sprintf("%X", fp.SEQ.ISR),
@@ -320,27 +320,27 @@ func fingerprintToMap(fp *OSFingerprint) map[string]map[string]string {
 	for i, opt := range fp.OPS.Options {
 		ops[fmt.Sprintf("O%d", i+1)] = opt
 	}
-	m["OPS"] = ops
+	sections["OPS"] = ops
 
 	// WIN
 	win := make(map[string]string)
 	for i, w := range fp.WIN.Windows {
 		win[fmt.Sprintf("W%d", i+1)] = fmt.Sprintf("%X", w)
 	}
-	m["WIN"] = win
+	sections["WIN"] = win
 
 	// T1-T7
 	for i, p := range fp.Probes {
-		r := "N"
+		responded := "N"
 		if p.Responded {
-			r = "Y"
+			responded = "Y"
 		}
 		df := "N"
 		if p.DF {
 			df = "Y"
 		}
-		m[fmt.Sprintf("T%d", i+1)] = map[string]string{
-			"R":  r,
+		sections[fmt.Sprintf("T%d", i+1)] = map[string]string{
+			"R":  responded,
 			"DF": df,
 			"T":  fmt.Sprintf("%X", p.TTL),
 			"W":  fmt.Sprintf("%X", p.Window),
@@ -369,24 +369,24 @@ func fingerprintToMap(fp *OSFingerprint) map[string]map[string]string {
 		u1["RIPCK"] = fp.U1.RIPCK
 		u1["RUCK"] = fp.U1.RUCK
 		u1["RUD"] = fp.U1.RUD
-		m["U1"] = u1
+		sections["U1"] = u1
 	} else {
-		m["U1"] = map[string]string{"R": "N"}
+		sections["U1"] = map[string]string{"R": "N"}
 	}
 
 	// IE
 	if fp.IE.Responded {
-		m["IE"] = map[string]string{
+		sections["IE"] = map[string]string{
 			"R":   "Y",
 			"DFI": fp.IE.DFI,
 			"T":   fmt.Sprintf("%X", fp.IE.TTL),
 			"CD":  fp.IE.CD,
 		}
 	} else {
-		m["IE"] = map[string]string{"R": "N"}
+		sections["IE"] = map[string]string{"R": "N"}
 	}
 
-	return m
+	return sections
 }
 
 // sendOSProbes sends the OS detection probe sequence.

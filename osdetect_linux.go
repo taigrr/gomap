@@ -309,11 +309,11 @@ func analyzeISNSequence(isns []uint32) SEQFingerprint {
 
 	// GCD of differences
 	if len(diffs) > 0 {
-		g := diffs[0]
+		divisor := diffs[0]
 		for _, d := range diffs[1:] {
-			g = gcd(g, d)
+			divisor = gcd(divisor, d)
 		}
-		seq.GCD = int(g)
+		seq.GCD = int(divisor)
 	}
 
 	// SP (sequence predictability): lower = more predictable

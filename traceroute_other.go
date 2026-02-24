@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -19,7 +20,7 @@ func traceHopImpl(ctx context.Context, target string, ttl int, opts TracerouteOp
 		return "", 0, fmt.Errorf("intermediate hop detection requires raw sockets (Linux only)")
 	}
 
-	addr := net.JoinHostPort(target, fmt.Sprintf("%d", opts.Port))
+	addr := net.JoinHostPort(target, strconv.Itoa(opts.Port))
 	start := time.Now()
 
 	d := net.Dialer{Timeout: opts.Timeout}

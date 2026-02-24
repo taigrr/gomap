@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ScriptCategory represents a script classification (matching nmap categories).
@@ -26,6 +27,9 @@ const (
 	CategoryVersion   ScriptCategory = "version"
 	CategoryVuln      ScriptCategory = "vuln"
 )
+
+// defaultScriptTimeout is the default per-script network timeout.
+const defaultScriptTimeout = 5 * time.Second
 
 // ScriptPhase determines when a script runs.
 type ScriptPhase int
