@@ -101,6 +101,39 @@ type ScanOptions struct {
 	// OSScanGuess lowers the OS match confidence threshold for more aggressive guessing.
 	OSScanGuess bool
 
+	// MinParallelism is the minimum number of parallel probe groups.
+	MinParallelism int
+
+	// MaxParallelism is the maximum number of parallel probe groups.
+	MaxParallelism int
+
+	// MinRTTTimeout is the minimum probe round-trip time timeout.
+	MinRTTTimeout time.Duration
+
+	// MaxRTTTimeout is the maximum probe round-trip time timeout.
+	MaxRTTTimeout time.Duration
+
+	// InitialRTTTimeout is the initial RTT timeout before adaptive adjustment.
+	InitialRTTTimeout time.Duration
+
+	// DNSServers overrides the system DNS resolvers.
+	DNSServers []string
+
+	// Fragment enables IP fragmentation of probe packets (-f).
+	Fragment bool
+
+	// MTU sets the fragment size when Fragment is enabled (default 8).
+	MTU int
+
+	// SpoofMAC sets a spoofed MAC address for outgoing packets.
+	SpoofMAC string
+
+	// IdleZombie configures the zombie host for idle scanning.
+	IdleZombie IdleScanConfig
+
+	// FTPBounce configures the FTP relay for bounce scanning.
+	FTPBounce FTPBounceConfig
+
 	// BadSum sends packets with an intentionally incorrect checksum.
 	// Useful for detecting firewalls/IDS that don't verify checksums.
 	BadSum bool
@@ -398,6 +431,25 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 		sendDecoyPackets(ctx, opts, hostname, job.port, laddr)
 	}
 
+	// Use fragmented packets if requested
+	if opts.Fragment && opts.ScanType.RequiresRawSocket() {
+		sport := uint16(randomPort(10000, 65535))
+		flags := tcpSYN
+		switch opts.ScanType {
+		case FINScan:
+			flags = tcpFIN
+		case XmasScan:
+			flags = tcpFIN | tcpPSH | tcpURG
+		case NullScan:
+			flags = 0
+		case ACKScan, WindowScan:
+			flags = tcpACK
+		case MaimonScan:
+			flags = tcpFIN | tcpACK
+		}
+		_ = sendFragmentedPacket(laddr, hostname, sport, uint16(job.port), flags, opts.MTU)
+	}
+
 	switch opts.ScanType {
 	case ConnectScan:
 		scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout)
@@ -417,6 +469,14 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpACK, opts.Timeout)
 	case UDPScan:
 		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout)
+	case SCTPInitScan:
+		scanPortSCTPInit(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+	case SCTPCookieEchoScan:
+		scanPortSCTPCookieEcho(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
+	case IdleScan:
+		scanPortIdle(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout, opts.IdleZombie)
+	case FTPBounceScan:
+		scanPortFTPBounce(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.FTPBounce)
 	default:
 		scanPortConnect(ctx, resultCh, "tcp", hostname, job.service, job.port, opts.Timeout)
 	}

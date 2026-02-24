@@ -65,6 +65,17 @@ type ListTarget struct {
 	Hostname string
 }
 
+// GenerateRandomTargets generates n random public IPv4 addresses.
+// Equivalent to nmap -iR.
+func GenerateRandomTargets(n int) []string {
+	targets := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		ip := randomPublicIP()
+		targets = append(targets, ip.String())
+	}
+	return targets
+}
+
 // ListScan resolves targets and returns their IPs and hostnames without
 // sending any packets to the targets (equivalent to nmap -sL).
 func ListScan(targets []string, noDNS bool) ([]ListTarget, error) {
