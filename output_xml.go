@@ -319,3 +319,28 @@ func resultsToXML(results []*ScanResult, scanType ScanType, startTime time.Time,
 	header := []byte(xml.Header)
 	return append(header, output...), nil
 }
+
+// resultsToXMLStyled produces XML output with an optional XSL stylesheet reference.
+// If stylesheet is empty, no processing instruction is added.
+// If stylesheet is "webxml", the nmap.org stylesheet URL is used.
+// ResultsToXMLStyled produces XML output with an optional XSL stylesheet reference.
+func ResultsToXMLStyled(results []*ScanResult, scanType ScanType, startTime time.Time, version string, stylesheet string) ([]byte, error) {
+	data, err := resultsToXML(results, scanType, startTime, version)
+	if err != nil {
+		return nil, err
+	}
+
+	if stylesheet == "" {
+		return data, nil
+	}
+
+	if stylesheet == "webxml" {
+		stylesheet = "https://svn.nmap.org/nmap/docs/nmap.xsl"
+	}
+
+	// Insert stylesheet PI after XML declaration
+	pi := fmt.Sprintf("<?xml-stylesheet href=%q type=\"text/xsl\"?>\n", stylesheet)
+	header := xml.Header
+	rest := data[len(header):]
+	return append([]byte(header+pi), rest...), nil
+}

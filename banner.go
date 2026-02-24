@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -102,8 +103,14 @@ func GrabBanners(ctx context.Context, host string, result *ScanResult, opts Scan
 		if ctx.Err() != nil {
 			break
 		}
+		if opts.VersionTrace {
+			fmt.Fprintf(os.Stderr, "VERSION TRACE: Probing %s:%d (intensity %d)\n", host, p.Port, opts.VersionIntensity)
+		}
 		sv, err := GrabBannerWithIntensity(ctx, host, p.Port, opts.Timeout, db, opts.VersionIntensity)
 		if err != nil {
+			if opts.VersionTrace {
+				fmt.Fprintf(os.Stderr, "VERSION TRACE: %s:%d failed: %v\n", host, p.Port, err)
+			}
 			continue
 		}
 		if sv != nil && (sv.Banner != "" || sv.Service != "") {
