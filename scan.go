@@ -331,15 +331,13 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 	opts.defaults()
 
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	laddr, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("getting local IP: %w", err)
-	}
-
-	if opts.ScanType.RequiresRawSocket() {
-		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
-		}
 	}
 
 	tr := newTracer(opts.TraceWriter)
@@ -363,15 +361,13 @@ func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResult, error) {
 	opts.defaults()
 
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	laddr, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("getting local IP: %w", err)
-	}
-
-	if opts.ScanType.RequiresRawSocket() {
-		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
-		}
 	}
 
 	tr := newTracer(opts.TraceWriter)
