@@ -65,9 +65,12 @@ func (r *ScanResult) HasOpenPorts() bool {
 // String returns a human-readable summary of the scan result.
 func (r *ScanResult) String() string {
 	b := bytes.NewBuffer(nil)
-	ip := r.IP[len(r.IP)-1]
+	ipStr := "<unknown>"
+	if len(r.IP) > 0 {
+		ipStr = r.IP[len(r.IP)-1].String()
+	}
 
-	fmt.Fprintf(b, "\nHost: %s (%s)\n", r.Hostname, ip)
+	fmt.Fprintf(b, "\nHost: %s (%s)\n", r.Hostname, ipStr)
 
 	if r.HasOpenPorts() {
 		fmt.Fprintf(b, "\t|     %s\t%s\n", "Port", "Service")
@@ -136,8 +139,12 @@ func (results RangeScanResult) JSON() (string, error) {
 }
 
 func resultToJSON(r *ScanResult) JSONResult {
+	ipStr := ""
+	if len(r.IP) > 0 {
+		ipStr = r.IP[len(r.IP)-1].String()
+	}
 	jr := JSONResult{
-		IP:       r.IP[len(r.IP)-1].String(),
+		IP:       ipStr,
 		Hostname: r.Hostname,
 		Active:   r.HasOpenPorts(),
 	}
