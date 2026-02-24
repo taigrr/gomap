@@ -50,6 +50,34 @@ const (
 	DiscoveryIPProtocol
 )
 
+// String returns the human-readable name of a discovery method.
+func (m DiscoveryMethod) String() string {
+	switch m {
+	case DiscoveryTCPSYN:
+		return "tcp-syn"
+	case DiscoveryTCPACK:
+		return "tcp-ack"
+	case DiscoveryUDP:
+		return "udp"
+	case DiscoveryICMP:
+		return "icmp"
+	case DiscoveryConnect:
+		return "connect"
+	case DiscoveryARP:
+		return "arp"
+	case DiscoveryICMPTimestamp:
+		return "icmp-timestamp"
+	case DiscoveryICMPNetmask:
+		return "icmp-netmask"
+	case DiscoverySCTPInit:
+		return "sctp-init"
+	case DiscoveryIPProtocol:
+		return "ip-protocol"
+	default:
+		return "unknown"
+	}
+}
+
 // DiscoveryOptions configures host discovery.
 type DiscoveryOptions struct {
 	// Methods specifies which discovery techniques to use.
