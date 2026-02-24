@@ -161,6 +161,38 @@ func selectIP(ips []net.IP, preferIPv6 bool) net.IP {
 	return ips[0] // fall back to first available
 }
 
+// defaultInterface returns the name of the network interface used for
+// the default route. It finds the interface that has a non-loopback,
+// globally-routable address.
+func defaultInterface() (string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil || len(addrs) == 0 {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip != nil && !ip.IsLoopback() && ip.IsGlobalUnicast() {
+				return iface.Name, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no suitable network interface found")
+}
+
 func canSocketBind(laddr string) bool {
 	proto := "ip4"
 	if IsIPv6(laddr) {
