@@ -61,12 +61,12 @@ func IPProtocolScan(ctx context.Context, host string, opts ScanOptions) ([]Proto
 				if ctx.Err() != nil {
 					return
 				}
-				r := probeProtocol(ctx, laddr, host, j.proto, opts.Timeout)
+				result := probeProtocol(ctx, laddr, host, j.proto, opts.Timeout)
 				if opts.TraceWriter != nil {
 					tr := newTracer(opts.TraceWriter)
 					tr.tracePacket(PacketSent, fmt.Sprintf("IP-PROTO-%d", j.proto), laddr, 0, host, 0, "")
 				}
-				resultCh <- r
+				resultCh <- result
 			}
 		}()
 	}

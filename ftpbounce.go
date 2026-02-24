@@ -35,8 +35,8 @@ func scanPortFTPBounce(ctx context.Context, resultCh chan<- PortResult, targetHo
 		ftp.Password = "gomap@"
 	}
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", ftp.Server)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", ftp.Server)
 	if err != nil {
 		result.setStateReason(PortFiltered, "ftp-connect-error")
 		resultCh <- result

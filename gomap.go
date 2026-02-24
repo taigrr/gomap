@@ -64,35 +64,35 @@ func (r *ScanResult) HasOpenPorts() bool {
 
 // String returns a human-readable summary of the scan result.
 func (r *ScanResult) String() string {
-	b := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
 	ipStr := "<unknown>"
 	if len(r.IP) > 0 {
 		ipStr = r.IP[len(r.IP)-1].String()
 	}
 
-	fmt.Fprintf(b, "\nHost: %s (%s)\n", r.Hostname, ipStr)
+	fmt.Fprintf(buf, "\nHost: %s (%s)\n", r.Hostname, ipStr)
 
 	if r.HasOpenPorts() {
-		fmt.Fprintf(b, "\t|     %s\t%s\n", "Port", "Service")
-		fmt.Fprintf(b, "\t|     %s\t%s\n", "----", "-------")
+		fmt.Fprintf(buf, "\t|     %s\t%s\n", "Port", "Service")
+		fmt.Fprintf(buf, "\t|     %s\t%s\n", "----", "-------")
 		for _, v := range r.Ports {
 			if v.Open {
-				fmt.Fprintf(b, "\t|---- %d\t%s\n", v.Port, v.Service)
+				fmt.Fprintf(buf, "\t|---- %d\t%s\n", v.Port, v.Service)
 			}
 		}
 	} else if r.Hostname != "Unknown" {
-		fmt.Fprintf(b, "\t|---- %s\n", "No Open Ports Found")
+		fmt.Fprintf(buf, "\t|---- %s\n", "No Open Ports Found")
 	}
-	return b.String()
+	return buf.String()
 }
 
 // String returns a human-readable summary of all scan results.
 func (results RangeScanResult) String() string {
-	b := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
 	for _, r := range results {
-		b.WriteString(r.String())
+		buf.WriteString(r.String())
 	}
-	return b.String()
+	return buf.String()
 }
 
 // JSONResult is the JSON-serializable representation of a single host scan.

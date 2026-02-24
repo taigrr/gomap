@@ -40,8 +40,8 @@ func (s *smtpCommandsScript) Run(ctx context.Context, target ScriptTarget) (*Scr
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +112,8 @@ func (s *ftpAnonScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOu
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +164,8 @@ func (s *mysqlInfoScript) Run(ctx context.Context, target ScriptTarget) (*Script
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +220,8 @@ func (s *redisInfoScript) Run(ctx context.Context, target ScriptTarget) (*Script
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +306,8 @@ func (s *httpHeadersScript) Run(ctx context.Context, target ScriptTarget) (*Scri
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -373,8 +373,8 @@ func (s *httpRobotsScript) Run(ctx context.Context, target ScriptTarget) (*Scrip
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -447,8 +447,8 @@ func (s *bannerScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOut
 	timeout := 3 * time.Second
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}

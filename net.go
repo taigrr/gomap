@@ -124,9 +124,9 @@ func createHostRangeV6(ipNet *net.IPNet) []string {
 
 	var hosts []string
 	for current.Cmp(end) <= 0 {
-		b := current.Bytes()
+		ipBytes := current.Bytes()
 		ip := make(net.IP, 16)
-		copy(ip[16-len(b):], b)
+		copy(ip[16-len(ipBytes):], ipBytes)
 		hosts = append(hosts, ip.String())
 		current.Add(current, one)
 	}

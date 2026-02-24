@@ -41,13 +41,13 @@ func tcpChecksum(data []byte, src, dst [4]byte) uint16 {
 		totalLength++
 	}
 
-	d := make([]byte, 0, totalLength)
-	d = append(d, pseudoHeader...)
-	d = append(d, data...)
+	checksumData := make([]byte, 0, totalLength)
+	checksumData = append(checksumData, pseudoHeader...)
+	checksumData = append(checksumData, data...)
 
 	var sum uint32
-	for i := 0; i < len(d)-1; i += 2 {
-		sum += uint32(uint16(d[i])<<8 | uint16(d[i+1]))
+	for i := 0; i < len(checksumData)-1; i += 2 {
+		sum += uint32(uint16(checksumData[i])<<8 | uint16(checksumData[i+1]))
 	}
 
 	sum = (sum >> 16) + (sum & 0xffff)
@@ -56,11 +56,11 @@ func tcpChecksum(data []byte, src, dst [4]byte) uint16 {
 }
 
 func ipToBytes(addr string) [4]byte {
-	s := strings.Split(addr, ".")
-	b0, _ := strconv.Atoi(s[0])
-	b1, _ := strconv.Atoi(s[1])
-	b2, _ := strconv.Atoi(s[2])
-	b3, _ := strconv.Atoi(s[3])
+	octets := strings.Split(addr, ".")
+	b0, _ := strconv.Atoi(octets[0])
+	b1, _ := strconv.Atoi(octets[1])
+	b2, _ := strconv.Atoi(octets[2])
+	b3, _ := strconv.Atoi(octets[3])
 	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
 }
 
