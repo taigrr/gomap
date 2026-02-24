@@ -331,15 +331,13 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 	opts.defaults()
 
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	laddr, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("getting local IP: %w", err)
-	}
-
-	if opts.ScanType.RequiresRawSocket() {
-		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
-		}
 	}
 
 	tr := newTracer(opts.TraceWriter)
@@ -363,15 +361,13 @@ func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResult, error) {
 	opts.defaults()
 
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	laddr, err := GetLocalIP()
 	if err != nil {
 		return nil, fmt.Errorf("getting local IP: %w", err)
-	}
-
-	if opts.ScanType.RequiresRawSocket() {
-		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
-		}
 	}
 
 	tr := newTracer(opts.TraceWriter)
@@ -400,12 +396,14 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 			continue
 		}
 		hostCtx := ctx
+		var cancel context.CancelFunc
 		if opts.HostTimeout > 0 {
-			var cancel context.CancelFunc
 			hostCtx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
-			defer cancel()
 		}
 		scan, err := scanHostPorts(hostCtx, h, laddr, opts, tr)
+		if cancel != nil {
+			cancel()
+		}
 		if err != nil {
 			continue
 		}
@@ -425,12 +423,14 @@ func scanRange(ctx context.Context, laddr string, opts ScanOptions, tr *tracer) 
 			return results, err
 		}
 		hostCtx := ctx
+		var cancel context.CancelFunc
 		if opts.HostTimeout > 0 {
-			var cancel context.CancelFunc
 			hostCtx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
-			defer cancel()
 		}
 		scan, err := scanHostPorts(hostCtx, h, laddr, opts, tr)
+		if cancel != nil {
+			cancel()
+		}
 		if err != nil {
 			continue
 		}
@@ -463,33 +463,7 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 	}
 
 	// Determine ports to scan
-	var portList map[int]string
-	if len(opts.Ports) > 0 {
-		portList = make(map[int]string, len(opts.Ports))
-		for _, p := range opts.Ports {
-			svc := LookupService(p)
-			portList[p] = svc
-		}
-	} else if opts.FastScan {
-		portList = CommonPorts
-	} else {
-		portList = DetailedPorts
-	}
-
-	// Exclude ports if specified
-	if len(opts.ExcludePorts) > 0 {
-		excludeSet := make(map[int]bool, len(opts.ExcludePorts))
-		for _, p := range opts.ExcludePorts {
-			excludeSet[p] = true
-		}
-		filtered := make(map[int]string, len(portList))
-		for p, svc := range portList {
-			if !excludeSet[p] {
-				filtered[p] = svc
-			}
-		}
-		portList = filtered
-	}
+	portList := resolvePortList(opts)
 
 	tasks := len(portList)
 	in := make(chan portJob, tasks)

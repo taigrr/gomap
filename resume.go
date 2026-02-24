@@ -27,11 +27,11 @@ type ResumeState struct {
 
 // ResumeOptions is a serializable subset of ScanOptions.
 type ResumeOptions struct {
-	ScanType  string `json:"scanType"`
-	FastScan  bool   `json:"fastScan"`
-	TopPorts  int    `json:"topPorts,omitempty"`
-	PortSpec  string `json:"portSpec,omitempty"`
-	Timing    string `json:"timing,omitempty"`
+	ScanType string `json:"scanType"`
+	FastScan bool   `json:"fastScan"`
+	TopPorts int    `json:"topPorts,omitempty"`
+	PortSpec string `json:"portSpec,omitempty"`
+	Timing   string `json:"timing,omitempty"`
 }
 
 // SaveResume writes the resume state to a file.
@@ -71,12 +71,14 @@ func (s *ResumeState) RemainingTargets() []string {
 }
 
 // MarkComplete marks a host as completed and saves state.
-func (s *ResumeState) MarkComplete(host, resumeFile string) {
+// Returns an error if the resume file cannot be written.
+func (s *ResumeState) MarkComplete(host, resumeFile string) error {
 	if s.CompletedHosts == nil {
 		s.CompletedHosts = make(map[string]bool)
 	}
 	s.CompletedHosts[host] = true
 	if resumeFile != "" {
-		SaveResume(resumeFile, s)
+		return SaveResume(resumeFile, s)
 	}
+	return nil
 }

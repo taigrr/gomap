@@ -125,9 +125,9 @@ func TestMatchAttributeValue(t *testing.T) {
 	}{
 		{"Z", "Z", true},
 		{"Z", "I", false},
-		{"40", "3E-42", true},   // hex range
-		{"3D", "3E-42", false},  // below range
-		{"43", "3E-42", false},  // above range
+		{"40", "3E-42", true},  // hex range
+		{"3D", "3E-42", false}, // below range
+		{"43", "3E-42", false}, // above range
 		{"Z", "Z|I|RI", true},  // alternatives
 		{"I", "Z|I|RI", true},
 		{"X", "Z|I|RI", false},

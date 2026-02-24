@@ -136,8 +136,8 @@ func dialSOCKS4Proxy(ctx context.Context, u *url.URL, target string, timeout tim
 
 	// SOCKS4 CONNECT request
 	req := []byte{
-		0x04,       // version
-		0x01,       // CONNECT
+		0x04,                        // version
+		0x01,                        // CONNECT
 		byte(port >> 8), byte(port), // port big-endian
 		ip4[0], ip4[1], ip4[2], ip4[3], // IP
 		0x00, // userid (empty)
@@ -163,4 +163,3 @@ func dialSOCKS4Proxy(ctx context.Context, u *url.URL, target string, timeout tim
 	conn.SetDeadline(time.Time{})
 	return conn, nil
 }
-

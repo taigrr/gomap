@@ -14,8 +14,10 @@ import (
 // httpTitleScript extracts the HTML <title> from HTTP services.
 type httpTitleScript struct{}
 
-func (s *httpTitleScript) ID() string          { return "http-title" }
-func (s *httpTitleScript) Description() string { return "Shows the title of the default page of a web server" }
+func (s *httpTitleScript) ID() string { return "http-title" }
+func (s *httpTitleScript) Description() string {
+	return "Shows the title of the default page of a web server"
+}
 func (s *httpTitleScript) Categories() []ScriptCategory {
 	return []ScriptCategory{CategoryDefault, CategoryDiscovery, CategorySafe}
 }
