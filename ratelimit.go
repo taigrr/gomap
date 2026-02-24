@@ -69,9 +69,9 @@ func (rl *RateLimiter) MinWorkers(timeoutPerProbe time.Duration) int {
 		return 0
 	}
 	// workers needed = minRate * timeout_seconds
-	w := int(float64(rl.minRate) * timeoutPerProbe.Seconds())
-	if w < 1 {
-		w = 1
+	needed := int(float64(rl.minRate) * timeoutPerProbe.Seconds())
+	if needed < 1 {
+		needed = 1
 	}
-	return w
+	return needed
 }
