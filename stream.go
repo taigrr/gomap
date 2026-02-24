@@ -32,18 +32,18 @@ type ScanEvent struct {
 // This is the preferred API for UIs and interactive applications that want
 // to display results as they arrive.
 func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-chan ScanEvent {
-	out := make(chan ScanEvent, 64)
+	out := make(chan ScanEvent, streamHostEventBuffer)
 	go func() {
 		defer close(out)
 		opts.defaults()
 
 		ips, err := net.LookupIP(hostname)
 		if err != nil {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("resolving %s: %w", hostname, err)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s: %v", ErrResolveHost, hostname, err)}
 			return
 		}
 		if len(ips) == 0 {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("no IP addresses for host: %s", hostname)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s", ErrNoAddresses, hostname)}
 			return
 		}
 
@@ -55,7 +55,7 @@ func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-ch
 		}
 
 		if opts.ScanType.RequiresRawSocket() && !canSocketBind(laddr) {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("raw socket required for %s scan", opts.ScanType)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s scan needs root or CAP_NET_RAW", ErrRawSocketRequired, opts.ScanType)}
 			return
 		}
 
@@ -69,7 +69,7 @@ func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-ch
 // Results from different hosts are interleaved. Each host's completion
 // is signaled by a ScanEvent with Done=true.
 func ScanCIDRStream(ctx context.Context, cidr string, opts ScanOptions) <-chan ScanEvent {
-	out := make(chan ScanEvent, 128)
+	out := make(chan ScanEvent, streamCIDREventBuffer)
 	go func() {
 		defer close(out)
 		opts.defaults()

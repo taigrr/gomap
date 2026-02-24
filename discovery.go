@@ -182,7 +182,7 @@ func DiscoverHosts(ctx context.Context, hosts []string, opts DiscoveryOptions) (
 // The channel is closed when discovery completes.
 func DiscoverHostsStream(ctx context.Context, hosts []string, opts DiscoveryOptions) <-chan HostResult {
 	opts.defaults()
-	out := make(chan HostResult, 64)
+	out := make(chan HostResult, discoveryStreamBuffer)
 
 	go func() {
 		defer close(out)
@@ -293,13 +293,13 @@ func probeHost(ctx context.Context, host string, opts DiscoveryOptions) HostResu
 
 // probeTCPConnect attempts a TCP connect to any of the specified ports.
 func probeTCPConnect(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
-	d := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout}
 	for _, port := range ports {
 		if ctx.Err() != nil {
 			return false
 		}
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
-		conn, err := d.DialContext(ctx, "tcp", addr)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			conn.Close()
 			return true
@@ -314,13 +314,13 @@ func probeTCPConnect(ctx context.Context, host string, ports []int, timeout time
 
 // probeUDP sends UDP packets to detect hosts via ICMP unreachable.
 func probeUDP(ctx context.Context, host string, ports []int, timeout time.Duration) bool {
-	d := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout}
 	for _, port := range ports {
 		if ctx.Err() != nil {
 			return false
 		}
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
-		conn, err := d.DialContext(ctx, "udp", addr)
+		conn, err := dialer.DialContext(ctx, "udp", addr)
 		if err != nil {
 			continue
 		}

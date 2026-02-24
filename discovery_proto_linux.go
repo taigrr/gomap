@@ -35,7 +35,7 @@ func probeIPProtocol(ctx context.Context, host string, protocols []int, timeout 
 			continue
 		}
 
-		buf := make([]byte, 1024)
+		buf := make([]byte, readBufferSize)
 		n, err := conn.Read(buf)
 		conn.Close()
 		if n > 0 || err == nil {

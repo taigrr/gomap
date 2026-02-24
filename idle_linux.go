@@ -42,7 +42,7 @@ func scanPortIdle(ctx context.Context, resultCh chan<- PortResult, hostname, ser
 	}
 
 	// Step 2: Send a forged SYN to the target (spoofed from zombie's IP)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	err = sendTCPPacket(zombie.ZombieHost, hostname, sport, uint16(port), tcpSYN)
 	if err != nil {
 		result.setStateReason(PortFiltered, "send-error")
@@ -79,7 +79,7 @@ func scanPortIdle(ctx context.Context, resultCh chan<- PortResult, hostname, ser
 // probeZombieIPID sends a SYN/ACK to the zombie to elicit a RST and reads the IP ID.
 func probeZombieIPID(laddr, zombie string, port int, timeout time.Duration) (uint16, error) {
 	responseCh := make(chan rawResponse, 1)
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 
 	// Listen for RST
 	go listenForIPID(laddr, zombie, uint16(port), sport, responseCh, timeout)
@@ -119,7 +119,7 @@ func listenForIPID(laddr, raddr string, dport, sport uint16, ch chan<- rawRespon
 
 	// We need to read the IP header to get the IP ID
 	// On Linux, raw IP sockets include the IP header
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	for {
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {

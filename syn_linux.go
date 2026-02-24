@@ -12,7 +12,7 @@ func scanPortSyn(ctx context.Context, resultCh chan<- PortResult, protocol, host
 	result := PortResult{Port: port, Service: service}
 	responseCh := make(chan rawResponse, 1)
 
-	sport := uint16(randomPort(10000, 65535))
+	sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 	go listenForResponse(laddr, hostname, uint16(port), sport, responseCh, timeout)
 
 	time.Sleep(5 * time.Millisecond)

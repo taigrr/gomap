@@ -145,6 +145,9 @@ const OSScanGuessThreshold = 0.85
 // Any match above this threshold is reported.
 const OSScanGuessAggressiveThreshold = 0.50
 
+// DetectOS performs OS fingerprinting against a host by sending TCP/IP probes
+// to an open and a closed port, then matching the responses against the nmap
+// OS fingerprint database. Both openPort and closedPort must be known in advance.
 func DetectOS(ctx context.Context, host string, openPort, closedPort int, opts ScanOptions) (*OSDetectResult, error) {
 	opts.defaults()
 

@@ -59,13 +59,13 @@ func dialProxy(ctx context.Context, proxyURL, target string, timeout time.Durati
 }
 
 func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.Duration) (net.Conn, error) {
-	d := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout}
 	proxyAddr := u.Host
 	if !strings.Contains(proxyAddr, ":") {
 		proxyAddr += ":8080"
 	}
 
-	conn, err := d.DialContext(ctx, "tcp", proxyAddr)
+	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 	}
 
 	// Read response (look for "200")
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		conn.Close()
@@ -102,7 +102,7 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 }
 
 func dialSOCKS4Proxy(ctx context.Context, u *url.URL, target string, timeout time.Duration) (net.Conn, error) {
-	d := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout}
 	proxyAddr := u.Host
 	if !strings.Contains(proxyAddr, ":") {
 		proxyAddr += ":1080"
@@ -127,7 +127,7 @@ func dialSOCKS4Proxy(ctx context.Context, u *url.URL, target string, timeout tim
 		return nil, fmt.Errorf("SOCKS4 requires IPv4 target")
 	}
 
-	conn, err := d.DialContext(ctx, "tcp", proxyAddr)
+	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
 		return nil, err
 	}

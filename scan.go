@@ -613,7 +613,7 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 
 	// Use fragmented packets if requested
 	if opts.Fragment && opts.ScanType.RequiresRawSocket() {
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 		_ = sendFragmentedPacket(laddr, hostname, sport, uint16(job.port), effectiveFlags, opts.MTU)
 	}
 
@@ -671,19 +671,7 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 // sendDecoyPackets sends scan packets from each decoy IP.
 // These are "noise" packets that make it harder to identify the real scanner.
 func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, port int, realAddr string) {
-	flags := tcpSYN // default
-	switch opts.ScanType {
-	case FINScan:
-		flags = tcpFIN
-	case XmasScan:
-		flags = tcpFIN | tcpPSH | tcpURG
-	case NullScan:
-		flags = 0
-	case ACKScan, WindowScan:
-		flags = tcpACK
-	case MaimonScan:
-		flags = tcpFIN | tcpACK
-	}
+	flags := scanTypeFlags(opts.ScanType)
 
 	for _, decoyIP := range opts.Decoys.ResolvedIPs() {
 		if ctx.Err() != nil {
@@ -693,7 +681,7 @@ func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, po
 		if addr == realAddr {
 			continue // skip real IP, it sends its own packet
 		}
-		sport := uint16(randomPort(10000, 65535))
+		sport := uint16(randomPort(ephemeralPortMin, ephemeralPortMax))
 		// Best-effort: ignore errors from decoy packets
 		sendTCPPacket(addr, hostname, sport, uint16(port), flags)
 	}
@@ -706,8 +694,8 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 	tr.traceConnect(PacketSent, strings.ToUpper(protocol), hostname, port, "connect()")
 
 	// Use a dialer that respects context
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 	if err != nil {
 		tr.traceConnect(PacketReceived, strings.ToUpper(protocol), hostname, port, err.Error())
 		if ctx.Err() != nil {
@@ -733,8 +721,8 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration, tr *tracer) {
 	result := PortResult{Port: port, Service: service}
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "udp", net.JoinHostPort(hostname, strconv.Itoa(port)))
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "udp", net.JoinHostPort(hostname, strconv.Itoa(port)))
 	if err != nil {
 		result.State = PortFiltered
 		resultCh <- result
@@ -759,7 +747,7 @@ func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 	}
 
 	// Try to read response
-	buf := make([]byte, 1024)
+	buf := make([]byte, readBufferSize)
 	n, err := conn.Read(buf)
 	if err != nil {
 		if ctx.Err() != nil {

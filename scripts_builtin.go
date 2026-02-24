@@ -39,11 +39,11 @@ func (s *httpTitleScript) Run(ctx context.Context, target ScriptTarget) (*Script
 	// Try HTTPS first for port 443/8443, HTTP otherwise
 	useHTTPS := target.Port == 443 || target.Port == 8443 || strings.ToLower(target.Service) == "https"
 
-	d := net.Dialer{Timeout: timeout}
+	dialer := net.Dialer{Timeout: timeout}
 	if useHTTPS {
-		conn, err = tls.DialWithDialer(&d, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
+		conn, err = tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
 	} else {
-		conn, err = d.DialContext(ctx, "tcp", addr)
+		conn, err = dialer.DialContext(ctx, "tcp", addr)
 	}
 	if err != nil {
 		return nil, err
@@ -131,8 +131,8 @@ func (s *sshHostKeyScript) Run(ctx context.Context, target ScriptTarget) (*Scrip
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -176,8 +176,8 @@ func (s *sslCertScript) Run(ctx context.Context, target ScriptTarget) (*ScriptOu
 	timeout := defaultScriptTimeout
 	addr := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 
-	d := net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(&d, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
+	dialer := net.Dialer{Timeout: timeout}
+	conn, err := tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		return nil, err
 	}
