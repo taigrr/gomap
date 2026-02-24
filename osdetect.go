@@ -136,8 +136,24 @@ type OSDetectResult struct {
 // The function sends a series of carefully crafted probes and analyzes the
 // responses to build a fingerprint, which is then compared against a
 // database of known OS signatures.
+// OSScanGuessThreshold is the default confidence threshold for OS match
+// reporting. With --osscan-guess, this is lowered to report more aggressive
+// guesses. Matches nmap's OSSCAN_GUESS_THRESHOLD (0.85).
+const OSScanGuessThreshold = 0.85
+
+// OSScanGuessAggressiveThreshold is used when --osscan-guess is enabled.
+// Any match above this threshold is reported.
+const OSScanGuessAggressiveThreshold = 0.50
+
 func DetectOS(ctx context.Context, host string, openPort, closedPort int, opts ScanOptions) (*OSDetectResult, error) {
 	opts.defaults()
+
+	// --osscan-limit: skip if we don't have both an open and closed port
+	if opts.OSScanLimit && (openPort <= 0 || closedPort <= 0) {
+		return &OSDetectResult{
+			Host: host,
+		}, nil
+	}
 
 	laddr, err := GetLocalIP()
 	if err != nil {
@@ -177,7 +193,17 @@ func DetectOS(ctx context.Context, host string, openPort, closedPort int, opts S
 	if err == nil && osdb != nil {
 		fpMap := fingerprintToMap(fp)
 		dbMatches := osdb.MatchOS(fpMap)
+
+		// Determine confidence threshold
+		threshold := OSScanGuessThreshold
+		if opts.OSScanGuess {
+			threshold = OSScanGuessAggressiveThreshold
+		}
+
 		for _, dm := range dbMatches {
+			if dm.Accuracy < threshold {
+				continue
+			}
 			match := OSMatch{
 				Name:     dm.Name,
 				CPE:      dm.CPE,
