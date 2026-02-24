@@ -35,6 +35,12 @@ const (
 	// DiscoveryARP uses ARP requests for local network discovery.
 	// Only works on the local subnet.
 	DiscoveryARP
+
+	// DiscoveryICMPTimestamp sends an ICMP timestamp request.
+	DiscoveryICMPTimestamp
+
+	// DiscoveryICMPNetmask sends an ICMP address mask request.
+	DiscoveryICMPNetmask
 )
 
 // DiscoveryOptions configures host discovery.
@@ -171,6 +177,10 @@ func probeHost(ctx context.Context, host string, opts DiscoveryOptions) HostResu
 			alive = probeUDP(ctx, host, opts.Ports, opts.Timeout)
 		case DiscoveryARP:
 			alive = probeARP(ctx, host, opts.Timeout)
+		case DiscoveryICMPTimestamp:
+			alive = probeICMPTimestamp(ctx, host, opts.Timeout)
+		case DiscoveryICMPNetmask:
+			alive = probeICMPNetmask(ctx, host, opts.Timeout)
 		}
 
 		if alive {

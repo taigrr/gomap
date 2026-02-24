@@ -61,6 +61,19 @@ var (
 	packetTrace      bool
 	osscanLimit      bool
 	osscanGuess      bool
+	fragment         bool
+	mtu              int
+	spoofMAC         string
+	zombieHost       string
+	ftpBounce        string
+	randomTargets    int
+	dnsServers       string
+	minParallelism   int
+	maxParallelism   int
+	minRTTTimeout    time.Duration
+	maxRTTTimeout    time.Duration
+	initialRTT       time.Duration
+	resumeFile       string
 	version          = "dev"
 )
 
@@ -76,7 +89,7 @@ func main() {
 	}
 
 	rootCmd.Flags().BoolVarP(&fast, "fast", "f", false, "Fast scan (top ports only)")
-	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, maimon, udp")
+	rootCmd.Flags().StringVarP(&scanType, "scan-type", "s", "connect", "Scan type: connect, syn, fin, xmas, null, ack, window, maimon, udp, sctp-init, sctp-cookie-echo, idle, ftp-bounce")
 	rootCmd.Flags().BoolVarP(&jsonOut, "json", "j", false, "Output as JSON")
 	rootCmd.Flags().BoolVarP(&xmlOut, "xml", "x", false, "Output as nmap-compatible XML")
 	rootCmd.Flags().BoolVarP(&grepOut, "grep", "g", false, "Output in grepable format")
@@ -121,6 +134,19 @@ func main() {
 	rootCmd.Flags().BoolVar(&packetTrace, "packet-trace", false, "Log every packet sent/received")
 	rootCmd.Flags().BoolVar(&osscanLimit, "osscan-limit", false, "Skip OS detection on hosts without open+closed ports")
 	rootCmd.Flags().BoolVar(&osscanGuess, "osscan-guess", false, "Guess OS more aggressively")
+	rootCmd.Flags().BoolVarP(&fragment, "fragment", "f", false, "Fragment IP packets")
+	rootCmd.Flags().IntVar(&mtu, "mtu", 0, "Set MTU for fragmentation (implies -f)")
+	rootCmd.Flags().StringVar(&spoofMAC, "spoof-mac", "", "Spoof MAC address (addr, vendor, or 0 for random)")
+	rootCmd.Flags().StringVar(&zombieHost, "idle-zombie", "", "Zombie host for idle scan (-sI)")
+	rootCmd.Flags().StringVar(&ftpBounce, "ftp-bounce", "", "FTP server for bounce scan (-b host:port)")
+	rootCmd.Flags().IntVar(&randomTargets, "random-targets", 0, "Generate N random targets (-iR)")
+	rootCmd.Flags().StringVar(&dnsServers, "dns-servers", "", "Custom DNS servers (comma-separated)")
+	rootCmd.Flags().IntVar(&minParallelism, "min-parallelism", 0, "Minimum parallel probes")
+	rootCmd.Flags().IntVar(&maxParallelism, "max-parallelism", 0, "Maximum parallel probes")
+	rootCmd.Flags().DurationVar(&minRTTTimeout, "min-rtt-timeout", 0, "Minimum RTT timeout")
+	rootCmd.Flags().DurationVar(&maxRTTTimeout, "max-rtt-timeout", 0, "Maximum RTT timeout")
+	rootCmd.Flags().DurationVar(&initialRTT, "initial-rtt-timeout", 0, "Initial RTT timeout")
+	rootCmd.Flags().StringVar(&resumeFile, "resume", "", "Resume scan from file")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -132,6 +158,26 @@ func run(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	startTime := time.Now()
+
+	// Generate random targets
+	if randomTargets > 0 {
+		args = append(args, gomap.GenerateRandomTargets(randomTargets)...)
+	}
+
+	// Resume scan
+	if resumeFile != "" {
+		state, err := gomap.LoadResume(resumeFile)
+		if err != nil {
+			return fmt.Errorf("loading resume file: %w", err)
+		}
+		remaining := state.RemainingTargets()
+		if len(remaining) == 0 {
+			fmt.Println("All targets already completed.")
+			return nil
+		}
+		args = append(args, remaining...)
+		fmt.Fprintf(os.Stderr, "Resuming scan: %d/%d targets remaining\n", len(remaining), len(state.Targets))
+	}
 
 	// Load targets from file if specified
 	if inputFile != "" {
@@ -215,7 +261,15 @@ func run(cmd *cobra.Command, args []string) error {
 		VersionIntensity: versionIntensity,
 		PacketTrace:      packetTrace,
 		OSScanLimit:      osscanLimit,
-		OSScanGuess:      osscanGuess,
+		OSScanGuess:       osscanGuess,
+		Fragment:          fragment || mtu > 0,
+		MTU:               mtu,
+		SpoofMAC:          spoofMAC,
+		MinParallelism:    minParallelism,
+		MaxParallelism:    maxParallelism,
+		MinRTTTimeout:     minRTTTimeout,
+		MaxRTTTimeout:     maxRTTTimeout,
+		InitialRTTTimeout: initialRTT,
 	}
 
 	// Parse port specification
@@ -250,6 +304,27 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	if outCfg.HasFileOutput() {
 		opts.Output = outCfg
+	}
+
+	// Configure idle scan zombie
+	if zombieHost != "" {
+		opts.IdleZombie = gomap.IdleScanConfig{ZombieHost: zombieHost}
+		if opts.ScanType != gomap.IdleScan {
+			opts.ScanType = gomap.IdleScan
+		}
+	}
+
+	// Configure FTP bounce
+	if ftpBounce != "" {
+		opts.FTPBounce = gomap.FTPBounceConfig{Server: ftpBounce}
+		if opts.ScanType != gomap.FTPBounceScan {
+			opts.ScanType = gomap.FTPBounceScan
+		}
+	}
+
+	// DNS servers
+	if dnsServers != "" {
+		opts.DNSServers = strings.Split(dnsServers, ",")
 	}
 
 	// Parse decoys
@@ -514,8 +589,16 @@ func parseScanType(s string) (gomap.ScanType, error) {
 		return gomap.MaimonScan, nil
 	case "udp":
 		return gomap.UDPScan, nil
+	case "sctp-init", "sctp", "sY":
+		return gomap.SCTPInitScan, nil
+	case "sctp-cookie-echo", "sZ":
+		return gomap.SCTPCookieEchoScan, nil
+	case "idle":
+		return gomap.IdleScan, nil
+	case "ftp-bounce", "bounce":
+		return gomap.FTPBounceScan, nil
 	default:
-		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, maimon, udp)", s)
+		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, maimon, udp, sctp-init, sctp-cookie-echo, idle, ftp-bounce)", s)
 	}
 }
 

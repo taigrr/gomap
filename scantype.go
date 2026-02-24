@@ -45,6 +45,25 @@ const (
 	// UDPScan sends UDP packets and interprets ICMP responses.
 	// Works cross-platform but may require privileges for ICMP listening.
 	UDPScan
+
+	// SCTPInitScan sends an SCTP INIT chunk. An INIT-ACK indicates open,
+	// ABORT indicates closed. Similar to TCP SYN scan.
+	// Linux only, requires raw socket privileges.
+	SCTPInitScan
+
+	// SCTPCookieEchoScan sends an SCTP COOKIE-ECHO chunk.
+	// Open ports silently drop the packet, closed ports respond with ABORT.
+	// Linux only, requires raw socket privileges.
+	SCTPCookieEchoScan
+
+	// IdleScan uses a zombie host's IP ID sequence to infer port state
+	// on the target without sending packets from the scanner's real IP.
+	// Linux only, requires raw socket privileges.
+	IdleScan
+
+	// FTPBounceScan uses an FTP server's PORT command to scan ports
+	// on a third-party host through the FTP server.
+	FTPBounceScan
 )
 
 // String returns the human-readable name of a scan type.
@@ -68,6 +87,14 @@ func (s ScanType) String() string {
 		return "maimon"
 	case UDPScan:
 		return "udp"
+	case SCTPInitScan:
+		return "sctp-init"
+	case SCTPCookieEchoScan:
+		return "sctp-cookie-echo"
+	case IdleScan:
+		return "idle"
+	case FTPBounceScan:
+		return "ftp-bounce"
 	default:
 		return "unknown"
 	}
@@ -76,7 +103,7 @@ func (s ScanType) String() string {
 // RequiresRawSocket returns true if the scan type requires raw socket access.
 func (s ScanType) RequiresRawSocket() bool {
 	switch s {
-	case SYNScan, FINScan, XmasScan, NullScan, ACKScan, WindowScan, MaimonScan:
+	case SYNScan, FINScan, XmasScan, NullScan, ACKScan, WindowScan, MaimonScan, SCTPInitScan, SCTPCookieEchoScan, IdleScan:
 		return true
 	default:
 		return false
