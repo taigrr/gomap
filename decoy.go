@@ -76,10 +76,10 @@ func (dc *DecoyConfig) ResolvedIPs() []net.IP {
 // avoiding private, loopback, multicast, and reserved ranges.
 func randomPublicIP() net.IP {
 	for {
-		b := make([]byte, 4)
-		rand.Read(b)
+		rawBytes := make([]byte, 4)
+		rand.Read(rawBytes)
 
-		ip := net.IPv4(b[0], b[1], b[2], b[3])
+		ip := net.IPv4(rawBytes[0], rawBytes[1], rawBytes[2], rawBytes[3])
 		if isPublicIP(ip) {
 			return ip
 		}
@@ -88,12 +88,11 @@ func randomPublicIP() net.IP {
 
 // randomPublicIPv6 generates a random global unicast IPv6 address.
 func randomPublicIPv6() net.IP {
-	b := make([]byte, 16)
-	// Use 2001:db8 documentation prefix area but with random suffix
-	// Actually use 2000::/3 global unicast range
-	rand.Read(b)
-	b[0] = 0x20 | (b[0] & 0x0f) // Ensure starts with 2xxx (global unicast)
-	return net.IP(b)
+	rawBytes := make([]byte, 16)
+	// Use 2000::/3 global unicast range
+	rand.Read(rawBytes)
+	rawBytes[0] = 0x20 | (rawBytes[0] & 0x0f) // Ensure starts with 2xxx (global unicast)
+	return net.IP(rawBytes)
 }
 
 func isPublicIP(ip net.IP) bool {
