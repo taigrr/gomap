@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"time"
 
@@ -30,12 +29,6 @@ type ServiceVersion struct {
 // and matches responses against known service signatures.
 //
 // If probeDB is nil, the embedded probe database is used.
-// GrabBanner connects to a port and attempts service identification using
-// the nmap-compatible probe database. It sends protocol-specific probes
-// and matches responses against known service signatures.
-//
-// If probeDB is nil, the embedded probe database is used.
-// intensity controls probe depth (0-9): 0=NULL probe only, 9=all probes.
 func GrabBanner(ctx context.Context, host string, port int, timeout time.Duration, probeDB *probedb.ServiceProbeDB) (*ServiceVersion, error) {
 	return GrabBannerWithIntensity(ctx, host, port, timeout, probeDB, 7)
 }
@@ -103,13 +96,13 @@ func GrabBanners(ctx context.Context, host string, result *ScanResult, opts Scan
 		if ctx.Err() != nil {
 			break
 		}
-		if opts.VersionTrace {
-			fmt.Fprintf(os.Stderr, "VERSION TRACE: Probing %s:%d (intensity %d)\n", host, p.Port, opts.VersionIntensity)
+		if opts.VersionTraceWriter != nil {
+			fmt.Fprintf(opts.VersionTraceWriter, "VERSION TRACE: Probing %s:%d (intensity %d)\n", host, p.Port, opts.VersionIntensity)
 		}
 		sv, err := GrabBannerWithIntensity(ctx, host, p.Port, opts.Timeout, db, opts.VersionIntensity)
 		if err != nil {
-			if opts.VersionTrace {
-				fmt.Fprintf(os.Stderr, "VERSION TRACE: %s:%d failed: %v\n", host, p.Port, err)
+			if opts.VersionTraceWriter != nil {
+				fmt.Fprintf(opts.VersionTraceWriter, "VERSION TRACE: %s:%d failed: %v\n", host, p.Port, err)
 			}
 			continue
 		}

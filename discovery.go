@@ -137,6 +137,52 @@ func DiscoverHosts(ctx context.Context, hosts []string, opts DiscoveryOptions) (
 	return results, nil
 }
 
+// DiscoverHostsStream streams discovery results over a channel.
+// The channel is closed when discovery completes.
+func DiscoverHostsStream(ctx context.Context, hosts []string, opts DiscoveryOptions) <-chan HostResult {
+	opts.defaults()
+	out := make(chan HostResult, 64)
+
+	go func() {
+		defer close(out)
+
+		in := make(chan string, len(hosts))
+		go func() {
+			for _, h := range hosts {
+				select {
+				case in <- h:
+				case <-ctx.Done():
+					close(in)
+					return
+				}
+			}
+			close(in)
+		}()
+
+		var wg sync.WaitGroup
+		for i := 0; i < opts.Workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for host := range in {
+					if ctx.Err() != nil {
+						return
+					}
+					result := probeHost(ctx, host, opts)
+					select {
+					case out <- result:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+		}
+		wg.Wait()
+	}()
+
+	return out
+}
+
 // DiscoverCIDR discovers all alive hosts in a CIDR range.
 func DiscoverCIDR(ctx context.Context, cidr string, opts DiscoveryOptions) ([]HostResult, error) {
 	hosts := CreateHostRange(cidr)

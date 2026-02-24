@@ -3,7 +3,9 @@ package gomap
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,8 +94,13 @@ type ScanOptions struct {
 	// 0 = light (only NULL probe), 9 = try all probes.
 	VersionIntensity int
 
-	// PacketTrace logs every packet sent and received.
+	// PacketTrace logs every packet sent and received to TraceWriter.
+	// If TraceWriter is nil and PacketTrace is true, os.Stderr is used.
 	PacketTrace bool
+
+	// TraceWriter receives packet trace output. If nil and PacketTrace is true,
+	// defaults to os.Stderr. Library users should set this to avoid side effects.
+	TraceWriter io.Writer
 
 	// OSScanLimit skips OS detection on hosts without at least 1 open + 1 closed port.
 	OSScanLimit bool
@@ -172,7 +179,12 @@ type ScanOptions struct {
 	MaxOSTries int
 
 	// VersionTrace enables detailed tracing of service version detection.
+	// Output goes to VersionTraceWriter (defaults to os.Stderr).
 	VersionTrace bool
+
+	// VersionTraceWriter receives version trace output. If nil and VersionTrace
+	// is true, defaults to os.Stderr. Library users should set this to avoid side effects.
+	VersionTraceWriter io.Writer
 
 	// ScriptArgs provides arguments to scripts as key=value pairs.
 	ScriptArgs map[string]string
@@ -191,6 +203,38 @@ type ScanOptions struct {
 
 	// Output configures file output destinations.
 	Output *OutputConfig
+}
+
+// Validate checks that the scan options are consistent and returns an error
+// describing any problems. This is called automatically by Scan* functions,
+// but callers may invoke it early for fast feedback.
+func (o *ScanOptions) Validate() error {
+	// Check option consistency first (cheapest checks)
+	if o.VersionIntensity < 0 || o.VersionIntensity > 9 {
+		return fmt.Errorf("%w: version-intensity must be 0-9, got %d", ErrInvalidScanOptions, o.VersionIntensity)
+	}
+	if o.MaxRate > 0 && o.MinRate > 0 && o.MinRate > o.MaxRate {
+		return fmt.Errorf("%w: min-rate (%d) cannot exceed max-rate (%d)", ErrInvalidScanOptions, o.MinRate, o.MaxRate)
+	}
+	if o.Workers < 0 {
+		return fmt.Errorf("%w: workers must be >= 0", ErrInvalidScanOptions)
+	}
+	if o.ScanType == IdleScan && o.IdleZombie.ZombieHost == "" {
+		return fmt.Errorf("%w: idle scan requires --idle-zombie", ErrInvalidScanOptions)
+	}
+	if o.ScanType == FTPBounceScan && o.FTPBounce.Server == "" {
+		return fmt.Errorf("%w: FTP bounce scan requires --ftp-bounce", ErrInvalidScanOptions)
+	}
+
+	// Check privileges last (may involve syscalls)
+	if o.ScanType.RequiresRawSocket() {
+		if laddr, err := GetLocalIP(); err == nil {
+			if !canSocketBind(laddr) {
+				return fmt.Errorf("%w: %s scan needs root or CAP_NET_RAW", ErrRawSocketRequired, o.ScanType)
+			}
+		}
+	}
+	return nil
 }
 
 func (o *ScanOptions) defaults() {
@@ -219,6 +263,12 @@ func (o *ScanOptions) defaults() {
 	if o.VersionIntensity == 0 && !o.FastScan {
 		o.VersionIntensity = 7 // nmap default
 	}
+	if o.PacketTrace && o.TraceWriter == nil {
+		o.TraceWriter = os.Stderr
+	}
+	if o.VersionTrace && o.VersionTraceWriter == nil {
+		o.VersionTraceWriter = os.Stderr
+	}
 }
 
 // protocol returns the appropriate network protocol string for the scan type.
@@ -234,12 +284,16 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 	opts.defaults()
 
 	// Resolve first to determine address family for local addr
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
-		return nil, fmt.Errorf("resolving %s: %w", hostname, err)
+		return nil, fmt.Errorf("%w: %s: %v", ErrResolveHost, hostname, err)
 	}
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("no IP addresses for host: %s", hostname)
+		return nil, fmt.Errorf("%w: %s", ErrNoAddresses, hostname)
 	}
 
 	// Select preferred address family
@@ -251,13 +305,11 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 
 	if opts.ScanType.RequiresRawSocket() {
 		if !canSocketBind(laddr) {
-			return nil, fmt.Errorf("socket: operation not permitted (raw socket required for %s scan)", opts.ScanType)
+			return nil, fmt.Errorf("%w: %s scan needs root or CAP_NET_RAW", ErrRawSocketRequired, opts.ScanType)
 		}
 	}
 
-	if opts.PacketTrace {
-		initTraceTimer()
-	}
+	tr := newTracer(opts.TraceWriter)
 
 	// Spoof MAC address if requested (Linux only, requires raw sockets)
 	if opts.SpoofMAC != "" {
@@ -272,7 +324,7 @@ func ScanHost(ctx context.Context, hostname string, opts ScanOptions) (*ScanResu
 		defer restore()
 	}
 
-	return scanHostPorts(ctx, hostname, laddr, opts)
+	return scanHostPorts(ctx, hostname, laddr, opts, tr)
 }
 
 // ScanRange scans every address on the local CIDR for open ports.
@@ -290,9 +342,8 @@ func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 		}
 	}
 
-	if opts.PacketTrace {
-		initTraceTimer()
-	}
+	tr := newTracer(opts.TraceWriter)
+
 	if opts.SpoofMAC != "" {
 		iface, err := defaultInterface()
 		if err != nil {
@@ -305,7 +356,7 @@ func ScanRange(ctx context.Context, opts ScanOptions) (RangeScanResult, error) {
 		defer restore()
 	}
 
-	return scanRange(ctx, laddr, opts)
+	return scanRange(ctx, laddr, opts, tr)
 }
 
 // ScanCIDR scans every address on a given CIDR for open ports.
@@ -323,9 +374,8 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 		}
 	}
 
-	if opts.PacketTrace {
-		initTraceTimer()
-	}
+	tr := newTracer(opts.TraceWriter)
+
 	if opts.SpoofMAC != "" {
 		iface, err := defaultInterface()
 		if err != nil {
@@ -349,12 +399,13 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 		if excludeSet[h] {
 			continue
 		}
+		hostCtx := ctx
 		if opts.HostTimeout > 0 {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
+			hostCtx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
 			defer cancel()
 		}
-		scan, err := scanHostPorts(ctx, h, laddr, opts)
+		scan, err := scanHostPorts(hostCtx, h, laddr, opts, tr)
 		if err != nil {
 			continue
 		}
@@ -364,7 +415,7 @@ func ScanCIDR(ctx context.Context, cidr string, opts ScanOptions) (RangeScanResu
 	return results, nil
 }
 
-func scanRange(ctx context.Context, laddr string, opts ScanOptions) (RangeScanResult, error) {
+func scanRange(ctx context.Context, laddr string, opts ScanOptions, tr *tracer) (RangeScanResult, error) {
 	iprange := GetLocalRange()
 	hosts := CreateHostRange(iprange)
 
@@ -373,7 +424,13 @@ func scanRange(ctx context.Context, laddr string, opts ScanOptions) (RangeScanRe
 		if err := ctx.Err(); err != nil {
 			return results, err
 		}
-		scan, err := scanHostPorts(ctx, h, laddr, opts)
+		hostCtx := ctx
+		if opts.HostTimeout > 0 {
+			var cancel context.CancelFunc
+			hostCtx, cancel = context.WithTimeout(ctx, opts.HostTimeout)
+			defer cancel()
+		}
+		scan, err := scanHostPorts(hostCtx, h, laddr, opts, tr)
 		if err != nil {
 			continue
 		}
@@ -383,7 +440,9 @@ func scanRange(ctx context.Context, laddr string, opts ScanOptions) (RangeScanRe
 	return results, nil
 }
 
-func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions) (*ScanResult, error) {
+func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions, tr *tracer) (*ScanResult, error) {
+	startTime := time.Now()
+
 	// Resolve the host
 	addr, err := net.LookupIP(hostname)
 	if err != nil {
@@ -466,11 +525,15 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 					return
 				}
 				if rl != nil {
-					rl.Wait()
+					rl.WaitCtx(ctx)
 				}
-				scanPort(ctx, resultCh, opts, hostname, laddr, job)
+				scanPort(ctx, resultCh, opts, hostname, laddr, job, tr)
 				if opts.ScanDelay > 0 {
-					time.Sleep(opts.ScanDelay)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(opts.ScanDelay):
+					}
 				}
 			}
 		}()
@@ -500,10 +563,23 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 		}
 	}
 
+	endTime := time.Now()
+
+	// Set protocol on results
+	proto := opts.protocol()
+	for i := range results {
+		if results[i].Protocol == "" {
+			results[i].Protocol = proto
+		}
+	}
+
 	return &ScanResult{
-		Hostname: hname[0],
-		IP:       addr,
-		Ports:    results,
+		Hostname:  hname[0],
+		IP:        addr,
+		Ports:     results,
+		StartTime: startTime,
+		EndTime:   endTime,
+		Duration:  endTime.Sub(startTime),
 	}, nil
 }
 
@@ -552,7 +628,7 @@ type portJob struct {
 }
 
 // scanPort dispatches a port scan to the appropriate scanner based on scan type.
-func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob) {
+func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions, hostname, laddr string, job portJob, tr *tracer) {
 	// Send decoy packets for raw scan types
 	if opts.Decoys != nil && opts.ScanType.RequiresRawSocket() {
 		sendDecoyPackets(ctx, opts, hostname, job.port, laddr)
@@ -571,12 +647,12 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 	}
 
 	// Trace raw scan packets at the dispatch level
-	if opts.PacketTrace && opts.ScanType != ConnectScan && opts.ScanType != UDPScan {
+	if tr != nil && opts.ScanType != ConnectScan && opts.ScanType != UDPScan {
 		flagStr := tcpFlagString(opts.ScanType)
 		if opts.ScanFlagsSet {
 			flagStr = fmt.Sprintf("0x%02x", opts.ScanFlags)
 		}
-		tracePacket(PacketSent, "TCP", laddr, 0, hostname, job.port, flagStr)
+		tr.tracePacket(PacketSent, "TCP", laddr, 0, hostname, job.port, flagStr)
 	}
 
 	// --scanflags with a raw scan type: use custom flags via scanPortRaw
@@ -588,9 +664,9 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 	switch opts.ScanType {
 	case ConnectScan:
 		if len(opts.Proxies) > 0 {
-			scanPortProxy(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.Proxies, opts.PacketTrace)
+			scanPortProxy(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.Proxies, tr)
 		} else {
-			scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout, opts.PacketTrace)
+			scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout, tr)
 		}
 	case SYNScan:
 		scanPortSyn(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, laddr, opts.Timeout)
@@ -607,7 +683,7 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 	case MaimonScan:
 		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, tcpFIN|tcpACK, opts.Timeout)
 	case UDPScan:
-		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.PacketTrace)
+		scanPortUDP(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, tr)
 	case SCTPInitScan:
 		scanPortSCTPInit(ctx, resultCh, hostname, job.service, job.port, laddr, opts.Timeout)
 	case SCTPCookieEchoScan:
@@ -617,7 +693,7 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 	case FTPBounceScan:
 		scanPortFTPBounce(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.FTPBounce)
 	default:
-		scanPortConnect(ctx, resultCh, "tcp", hostname, job.service, job.port, opts.Timeout, opts.PacketTrace)
+		scanPortConnect(ctx, resultCh, "tcp", hostname, job.service, job.port, opts.Timeout, tr)
 	}
 }
 
@@ -653,20 +729,16 @@ func sendDecoyPackets(ctx context.Context, opts ScanOptions, hostname string, po
 }
 
 // scanPortConnect performs a full TCP connect() scan on a single port.
-func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, hostname, service string, port int, timeout time.Duration, packetTrace bool) {
+func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, hostname, service string, port int, timeout time.Duration, tr *tracer) {
 	result := PortResult{Port: port, Service: service}
 
-	if packetTrace {
-		traceConnect(PacketSent, strings.ToUpper(protocol), hostname, port, "connect()")
-	}
+	tr.traceConnect(PacketSent, strings.ToUpper(protocol), hostname, port, "connect()")
 
 	// Use a dialer that respects context
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, protocol, net.JoinHostPort(hostname, strconv.Itoa(port)))
 	if err != nil {
-		if packetTrace {
-			traceConnect(PacketReceived, strings.ToUpper(protocol), hostname, port, err.Error())
-		}
+		tr.traceConnect(PacketReceived, strings.ToUpper(protocol), hostname, port, err.Error())
 		if ctx.Err() != nil {
 			result.State = PortFiltered
 			result.Reason = "no-response"
@@ -678,9 +750,7 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 		return
 	}
 	conn.Close()
-	if packetTrace {
-		traceConnect(PacketReceived, strings.ToUpper(protocol), hostname, port, "Connected")
-	}
+	tr.traceConnect(PacketReceived, strings.ToUpper(protocol), hostname, port, "Connected")
 	result.Open = true
 	result.State = PortOpen
 	result.Reason = "syn-ack"
@@ -689,7 +759,7 @@ func scanPortConnect(ctx context.Context, resultCh chan<- PortResult, protocol, 
 
 // scanPortUDP sends an empty UDP packet and listens for ICMP unreachable.
 // No response = open|filtered, ICMP unreachable = closed.
-func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration, packetTrace bool) {
+func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, service string, port int, timeout time.Duration, tr *tracer) {
 	result := PortResult{Port: port, Service: service}
 
 	d := net.Dialer{Timeout: timeout}
@@ -708,9 +778,7 @@ func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 	}
 	conn.SetDeadline(deadline)
 
-	if packetTrace {
-		tracePacket(PacketSent, "UDP", "", 0, hostname, port, "")
-	}
+	tr.tracePacket(PacketSent, "UDP", "", 0, hostname, port, "")
 
 	_, err = conn.Write([]byte{})
 	if err != nil {
@@ -734,17 +802,13 @@ func scanPortUDP(ctx context.Context, resultCh chan<- PortResult, hostname, serv
 			resultCh <- result
 			return
 		}
-		if packetTrace {
-			tracePacket(PacketReceived, "UDP", hostname, port, "", 0, "port-unreachable")
-		}
+		tr.tracePacket(PacketReceived, "UDP", hostname, port, "", 0, "port-unreachable")
 		result.State = PortClosed
 		resultCh <- result
 		return
 	}
 
-	if packetTrace {
-		tracePacket(PacketReceived, "UDP", hostname, port, "", 0, fmt.Sprintf("len=%d", n))
-	}
+	tr.tracePacket(PacketReceived, "UDP", hostname, port, "", 0, fmt.Sprintf("len=%d", n))
 	result.Open = true
 	result.State = PortOpen
 	resultCh <- result

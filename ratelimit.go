@@ -1,6 +1,7 @@
 package gomap
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -30,7 +31,13 @@ func NewRateLimiter(minRate, maxRate int) *RateLimiter {
 }
 
 // Wait blocks until it's safe to send the next packet according to the rate limit.
+// It returns immediately if the context is canceled.
 func (rl *RateLimiter) Wait() {
+	rl.WaitCtx(context.Background())
+}
+
+// WaitCtx blocks until it's safe to send the next packet, or ctx is canceled.
+func (rl *RateLimiter) WaitCtx(ctx context.Context) {
 	if rl == nil || rl.maxRate == 0 {
 		return
 	}
@@ -45,7 +52,12 @@ func (rl *RateLimiter) Wait() {
 
 	elapsed := time.Since(rl.last)
 	if elapsed < rl.interval {
-		time.Sleep(rl.interval - elapsed)
+		wait := rl.interval - elapsed
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
 	}
 	rl.last = time.Now()
 }

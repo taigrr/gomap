@@ -8,22 +8,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"time"
 )
 
 // ScanResult contains the results of a scan on a single host.
 type ScanResult struct {
-	Hostname string
-	IP       []net.IP
-	Ports    []PortResult
+	Hostname  string
+	IP        []net.IP
+	Ports     []PortResult
+	StartTime time.Time     // when scanning began for this host
+	EndTime   time.Time     // when scanning completed
+	Duration  time.Duration // total scan time for this host
 }
 
 // PortResult describes the state of a single port.
 type PortResult struct {
-	Port    int
-	Open    bool
-	State   PortState
-	Service string
-	Reason  string
+	Port     int
+	Protocol string // "tcp", "udp", or "sctp" (default "tcp")
+	Open     bool
+	State    PortState
+	Service  string
+	Reason   string
 }
 
 // setStateReason is a helper to set state and reason together.
@@ -89,26 +94,27 @@ func (results RangeScanResult) String() string {
 
 // JSONResult is the JSON-serializable representation of a single host scan.
 type JSONResult struct {
-	IP       string   `json:"ip"`
-	Hostname string   `json:"hostname"`
-	Active   bool     `json:"active"`
-	Ports    []string `json:"ports,omitempty"`
+	IP       string         `json:"ip"`
+	Hostname string         `json:"hostname"`
+	Active   bool           `json:"active"`
+	StartTime string        `json:"start_time,omitempty"`
+	EndTime   string        `json:"end_time,omitempty"`
+	Duration  string        `json:"duration,omitempty"`
+	Ports    []JSONPort     `json:"ports,omitempty"`
+}
+
+// JSONPort is a structured representation of a port result for JSON output.
+type JSONPort struct {
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
+	State    string `json:"state"`
+	Service  string `json:"service"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // JSON returns a JSON-encoded string of the scan result.
 func (r *ScanResult) JSON() (string, error) {
-	jr := JSONResult{
-		IP:       r.IP[len(r.IP)-1].String(),
-		Hostname: r.Hostname,
-		Active:   r.HasOpenPorts(),
-	}
-
-	for _, v := range r.Ports {
-		if v.Open {
-			jr.Ports = append(jr.Ports, fmt.Sprintf("%d: %s", v.Port, v.Service))
-		}
-	}
-
+	jr := resultToJSON(r)
 	j, err := json.MarshalIndent(jr, "", "\t")
 	if err != nil {
 		return "", err
@@ -118,24 +124,44 @@ func (r *ScanResult) JSON() (string, error) {
 
 // JSON returns a JSON-encoded string of all scan results.
 func (results RangeScanResult) JSON() (string, error) {
-	var jrs []JSONResult
+	jrs := make([]JSONResult, 0, len(results))
 	for _, r := range results {
-		jr := JSONResult{
-			IP:       r.IP[len(r.IP)-1].String(),
-			Hostname: r.Hostname,
-			Active:   r.HasOpenPorts(),
-		}
-		for _, v := range r.Ports {
-			if v.Open {
-				jr.Ports = append(jr.Ports, fmt.Sprintf("%d: %s", v.Port, v.Service))
-			}
-		}
-		jrs = append(jrs, jr)
+		jrs = append(jrs, resultToJSON(r))
 	}
-
 	j, err := json.MarshalIndent(jrs, "", "\t")
 	if err != nil {
 		return "", err
 	}
 	return string(j), nil
+}
+
+func resultToJSON(r *ScanResult) JSONResult {
+	jr := JSONResult{
+		IP:       r.IP[len(r.IP)-1].String(),
+		Hostname: r.Hostname,
+		Active:   r.HasOpenPorts(),
+	}
+	if !r.StartTime.IsZero() {
+		jr.StartTime = r.StartTime.Format(time.RFC3339)
+	}
+	if !r.EndTime.IsZero() {
+		jr.EndTime = r.EndTime.Format(time.RFC3339)
+	}
+	if r.Duration > 0 {
+		jr.Duration = r.Duration.String()
+	}
+	for _, v := range r.Ports {
+		proto := v.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		jr.Ports = append(jr.Ports, JSONPort{
+			Port:     v.Port,
+			Protocol: proto,
+			State:    v.State.String(),
+			Service:  v.Service,
+			Reason:   v.Reason,
+		})
+	}
+	return jr
 }
