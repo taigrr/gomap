@@ -187,7 +187,7 @@ func DiscoverHostsStream(ctx context.Context, hosts []string, opts DiscoveryOpti
 func DiscoverCIDR(ctx context.Context, cidr string, opts DiscoveryOptions) ([]HostResult, error) {
 	hosts := CreateHostRange(cidr)
 	if hosts == nil {
-		return nil, fmt.Errorf("invalid CIDR: %s", cidr)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidCIDR, cidr)
 	}
 	return DiscoverHosts(ctx, hosts, opts)
 }

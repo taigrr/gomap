@@ -46,15 +46,15 @@ func ParsePortRange(spec string) ([]int, error) {
 			rangeParts := strings.SplitN(part, "-", 2)
 			start, err := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
 			if err != nil {
-				return nil, fmt.Errorf("invalid port range start: %q", rangeParts[0])
+				return nil, fmt.Errorf("%w: invalid range start: %q", ErrInvalidPortSpec, rangeParts[0])
 			}
 			end, err := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
 			if err != nil {
-				return nil, fmt.Errorf("invalid port range end: %q", rangeParts[1])
+				return nil, fmt.Errorf("%w: invalid range end: %q", ErrInvalidPortSpec, rangeParts[1])
 			}
 
 			if start < 1 || end > 65535 || start > end {
-				return nil, fmt.Errorf("invalid port range: %d-%d", start, end)
+				return nil, fmt.Errorf("%w: invalid range: %d-%d", ErrInvalidPortSpec, start, end)
 			}
 
 			for p := start; p <= end; p++ {
@@ -66,10 +66,10 @@ func ParsePortRange(spec string) ([]int, error) {
 		} else {
 			p, err := strconv.Atoi(part)
 			if err != nil {
-				return nil, fmt.Errorf("invalid port: %q", part)
+				return nil, fmt.Errorf("%w: invalid port: %q", ErrInvalidPortSpec, part)
 			}
 			if p < 1 || p > 65535 {
-				return nil, fmt.Errorf("port out of range: %d", p)
+				return nil, fmt.Errorf("%w: port out of range: %d", ErrInvalidPortSpec, p)
 			}
 			if !seen[p] {
 				seen[p] = true
@@ -79,7 +79,7 @@ func ParsePortRange(spec string) ([]int, error) {
 	}
 
 	if len(ports) == 0 {
-		return nil, fmt.Errorf("no ports specified")
+		return nil, fmt.Errorf("%w: no ports specified", ErrInvalidPortSpec)
 	}
 
 	return ports, nil

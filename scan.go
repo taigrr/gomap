@@ -455,9 +455,6 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 	} else {
 		hname, err = net.LookupAddr(hostname)
 		if err != nil {
-			if opts.FastScan {
-				return nil, fmt.Errorf("reverse lookup %s: %w", hostname, err)
-			}
 			hname = []string{hostname}
 		}
 	}

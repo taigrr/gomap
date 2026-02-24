@@ -82,7 +82,7 @@ func ScanCIDRStream(ctx context.Context, cidr string, opts ScanOptions) <-chan S
 
 		hosts := CreateHostRange(cidr)
 		if hosts == nil {
-			out <- ScanEvent{Error: fmt.Errorf("invalid CIDR: %s", cidr)}
+			out <- ScanEvent{Error: fmt.Errorf("%w: %s", ErrInvalidCIDR, cidr)}
 			return
 		}
 
