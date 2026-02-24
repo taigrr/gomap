@@ -2,7 +2,7 @@ package gomap
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"sync"
 	"time"
 )
@@ -15,34 +15,56 @@ const (
 	PacketReceived PacketDirection = "RCVD"
 )
 
-var (
-	traceStart     time.Time
-	traceStartOnce sync.Once
-)
-
-// initTraceTimer initializes the packet trace start time.
-// Call this once at scan start.
-func initTraceTimer() {
-	traceStartOnce.Do(func() {
-		traceStart = time.Now()
-	})
+// tracer holds per-scan trace state. This avoids global mutable state
+// and allows concurrent scans with independent trace timers.
+type tracer struct {
+	mu      sync.Mutex
+	writer  io.Writer
+	start   time.Time
+	started bool
 }
 
-// tracePacket logs a packet event when packet tracing is enabled.
-// Format matches nmap: SENT (0.0412s) TCP 192.168.1.1:54321 > 10.0.0.1:80 S ttl=64
-func tracePacket(dir PacketDirection, proto, src string, srcPort int, dst string, dstPort int, detail string) {
-	initTraceTimer()
-	elapsed := time.Since(traceStart).Seconds()
+func newTracer(w io.Writer) *tracer {
+	if w == nil {
+		return nil
+	}
+	return &tracer{
+		writer: w,
+		start:  time.Now(),
+		started: true,
+	}
+}
+
+func (t *tracer) tracePacket(dir PacketDirection, proto, src string, srcPort int, dst string, dstPort int, detail string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	elapsed := time.Since(t.start).Seconds()
 	if srcPort > 0 && dstPort > 0 {
-		fmt.Fprintf(os.Stderr, "%s (%.4fs) %s %s:%d > %s:%d %s\n",
+		fmt.Fprintf(t.writer, "%s (%.4fs) %s %s:%d > %s:%d %s\n",
 			dir, elapsed, proto, src, srcPort, dst, dstPort, detail)
 	} else if dstPort > 0 {
-		fmt.Fprintf(os.Stderr, "%s (%.4fs) %s %s > %s:%d %s\n",
+		fmt.Fprintf(t.writer, "%s (%.4fs) %s %s > %s:%d %s\n",
 			dir, elapsed, proto, src, dst, dstPort, detail)
 	} else {
-		fmt.Fprintf(os.Stderr, "%s (%.4fs) %s %s > %s %s\n",
+		fmt.Fprintf(t.writer, "%s (%.4fs) %s %s > %s %s\n",
 			dir, elapsed, proto, src, dst, detail)
 	}
+}
+
+func (t *tracer) traceConnect(dir PacketDirection, proto, dst string, dstPort int, result string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	elapsed := time.Since(t.start).Seconds()
+	fmt.Fprintf(t.writer, "%s (%.4fs) %s > %s:%d %s\n",
+		dir, elapsed, proto, dst, dstPort, result)
 }
 
 // tcpFlagString returns a human-readable flag string for a scan type,
@@ -70,12 +92,4 @@ func tcpFlagString(st ScanType) string {
 	default:
 		return ""
 	}
-}
-
-// traceConnect logs a connect() attempt when packet tracing is enabled.
-func traceConnect(dir PacketDirection, proto, dst string, dstPort int, result string) {
-	initTraceTimer()
-	elapsed := time.Since(traceStart).Seconds()
-	fmt.Fprintf(os.Stderr, "%s (%.4fs) %s > %s:%d %s\n",
-		dir, elapsed, proto, dst, dstPort, result)
 }
