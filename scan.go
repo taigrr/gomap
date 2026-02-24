@@ -500,10 +500,12 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 				}
 				scanPort(ctx, resultCh, opts, hostname, laddr, job, tr)
 				if opts.ScanDelay > 0 {
+					timer := time.NewTimer(opts.ScanDelay)
 					select {
 					case <-ctx.Done():
+						timer.Stop()
 						return
-					case <-time.After(opts.ScanDelay):
+					case <-timer.C:
 					}
 				}
 			}
