@@ -39,11 +39,11 @@ func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-ch
 
 		ips, err := net.LookupIP(hostname)
 		if err != nil {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("resolving %s: %w", hostname, err)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s: %v", ErrResolveHost, hostname, err)}
 			return
 		}
 		if len(ips) == 0 {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("no IP addresses for host: %s", hostname)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s", ErrNoAddresses, hostname)}
 			return
 		}
 
@@ -55,7 +55,7 @@ func ScanHostStream(ctx context.Context, hostname string, opts ScanOptions) <-ch
 		}
 
 		if opts.ScanType.RequiresRawSocket() && !canSocketBind(laddr) {
-			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("raw socket required for %s scan", opts.ScanType)}
+			out <- ScanEvent{Host: hostname, Error: fmt.Errorf("%w: %s scan needs root or CAP_NET_RAW", ErrRawSocketRequired, opts.ScanType)}
 			return
 		}
 
