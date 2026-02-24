@@ -145,6 +145,50 @@ type ScanOptions struct {
 	// Useful for evading IDS that trigger on specific packet sizes.
 	DataLength int
 
+	// ScanFlags sets custom TCP flags for raw scans (--scanflags).
+	// When set, overrides the flags implied by the scan type.
+	ScanFlags uint16
+
+	// ScanFlagsSet indicates whether ScanFlags was explicitly provided.
+	ScanFlagsSet bool
+
+	// SpoofSourceIP spoofs the source IP address (-S).
+	// Only effective with raw socket scan types on Linux.
+	SpoofSourceIP string
+
+	// Proxies is a list of HTTP/SOCKS4 proxy URLs to relay connect scans through.
+	Proxies []string
+
+	// Data is arbitrary hex data to append to sent packets (--data).
+	Data []byte
+
+	// DataString is an ASCII string to append to sent packets (--data-string).
+	DataString string
+
+	// IPOptions sets raw IP options on outgoing packets (--ip-options).
+	IPOptions []byte
+
+	// MaxOSTries limits the number of OS detection attempts per host.
+	MaxOSTries int
+
+	// VersionTrace enables detailed tracing of service version detection.
+	VersionTrace bool
+
+	// ScriptArgs provides arguments to scripts as key=value pairs.
+	ScriptArgs map[string]string
+
+	// ScriptTrace enables tracing of all script data sent/received.
+	ScriptTrace bool
+
+	// ExcludePorts is a list of port numbers to exclude from scanning.
+	ExcludePorts []int
+
+	// MinHostgroup sets the minimum number of hosts to scan in parallel.
+	MinHostgroup int
+
+	// MaxHostgroup sets the maximum number of hosts to scan in parallel.
+	MaxHostgroup int
+
 	// Output configures file output destinations.
 	Output *OutputConfig
 }
@@ -373,6 +417,21 @@ func scanHostPorts(ctx context.Context, hostname, laddr string, opts ScanOptions
 		portList = DetailedPorts
 	}
 
+	// Exclude ports if specified
+	if len(opts.ExcludePorts) > 0 {
+		excludeSet := make(map[int]bool, len(opts.ExcludePorts))
+		for _, p := range opts.ExcludePorts {
+			excludeSet[p] = true
+		}
+		filtered := make(map[int]string, len(portList))
+		for p, svc := range portList {
+			if !excludeSet[p] {
+				filtered[p] = svc
+			}
+		}
+		portList = filtered
+	}
+
 	tasks := len(portList)
 	in := make(chan portJob, tasks)
 	resultCh := make(chan PortResult, tasks)
@@ -467,6 +526,26 @@ func buildExcludeSet(excludes []string) map[string]bool {
 	return set
 }
 
+// scanTypeFlags returns the default TCP flags for a scan type.
+func scanTypeFlags(st ScanType) uint16 {
+	switch st {
+	case SYNScan:
+		return tcpSYN
+	case FINScan:
+		return tcpFIN
+	case XmasScan:
+		return tcpFIN | tcpPSH | tcpURG
+	case NullScan:
+		return 0
+	case ACKScan, WindowScan:
+		return tcpACK
+	case MaimonScan:
+		return tcpFIN | tcpACK
+	default:
+		return tcpSYN
+	}
+}
+
 type portJob struct {
 	port    int
 	service string
@@ -479,34 +558,40 @@ func scanPort(ctx context.Context, resultCh chan<- PortResult, opts ScanOptions,
 		sendDecoyPackets(ctx, opts, hostname, job.port, laddr)
 	}
 
+	// Resolve effective TCP flags (--scanflags overrides scan type)
+	effectiveFlags := scanTypeFlags(opts.ScanType)
+	if opts.ScanFlagsSet {
+		effectiveFlags = opts.ScanFlags
+	}
+
 	// Use fragmented packets if requested
 	if opts.Fragment && opts.ScanType.RequiresRawSocket() {
 		sport := uint16(randomPort(10000, 65535))
-		flags := tcpSYN
-		switch opts.ScanType {
-		case FINScan:
-			flags = tcpFIN
-		case XmasScan:
-			flags = tcpFIN | tcpPSH | tcpURG
-		case NullScan:
-			flags = 0
-		case ACKScan, WindowScan:
-			flags = tcpACK
-		case MaimonScan:
-			flags = tcpFIN | tcpACK
-		}
-		_ = sendFragmentedPacket(laddr, hostname, sport, uint16(job.port), flags, opts.MTU)
+		_ = sendFragmentedPacket(laddr, hostname, sport, uint16(job.port), effectiveFlags, opts.MTU)
 	}
 
 	// Trace raw scan packets at the dispatch level
 	if opts.PacketTrace && opts.ScanType != ConnectScan && opts.ScanType != UDPScan {
 		flagStr := tcpFlagString(opts.ScanType)
+		if opts.ScanFlagsSet {
+			flagStr = fmt.Sprintf("0x%02x", opts.ScanFlags)
+		}
 		tracePacket(PacketSent, "TCP", laddr, 0, hostname, job.port, flagStr)
+	}
+
+	// --scanflags with a raw scan type: use custom flags via scanPortRaw
+	if opts.ScanFlagsSet && opts.ScanType.RequiresRawSocket() {
+		scanPortRaw(ctx, resultCh, hostname, job.service, job.port, laddr, opts.ScanFlags, opts.Timeout)
+		return
 	}
 
 	switch opts.ScanType {
 	case ConnectScan:
-		scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout, opts.PacketTrace)
+		if len(opts.Proxies) > 0 {
+			scanPortProxy(ctx, resultCh, hostname, job.service, job.port, opts.Timeout, opts.Proxies, opts.PacketTrace)
+		} else {
+			scanPortConnect(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, opts.Timeout, opts.PacketTrace)
+		}
 	case SYNScan:
 		scanPortSyn(ctx, resultCh, opts.protocol(), hostname, job.service, job.port, laddr, opts.Timeout)
 	case FINScan:

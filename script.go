@@ -49,6 +49,12 @@ type ScriptTarget struct {
 	Service string
 	Banner  string
 	Result  *ScanResult
+
+	// Args provides script arguments from --script-args.
+	Args map[string]string
+
+	// Trace enables verbose tracing of script data (--script-trace).
+	Trace bool
 }
 
 // ScriptOutput contains the results of a script execution.

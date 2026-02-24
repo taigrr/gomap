@@ -74,6 +74,25 @@ var (
 	maxRTTTimeout    time.Duration
 	initialRTT       time.Duration
 	resumeFile       string
+	scanFlags        string
+	spoofSource      string
+	proxies          string
+	dataHex          string
+	dataString       string
+	ipOptions        string
+	maxOSTries       int
+	versionTrace     bool
+	scriptArgs       string
+	scriptTrace      bool
+	excludePorts     string
+	minHostgroup     int
+	maxHostgroup     int
+	outputSkiddie    string
+	ifList           bool
+	stylesheet       string
+	webXML           bool
+	noStylesheet     bool
+	portRatio        float64
 	version          = "dev"
 )
 
@@ -147,6 +166,25 @@ func main() {
 	rootCmd.Flags().DurationVar(&maxRTTTimeout, "max-rtt-timeout", 0, "Maximum RTT timeout")
 	rootCmd.Flags().DurationVar(&initialRTT, "initial-rtt-timeout", 0, "Initial RTT timeout")
 	rootCmd.Flags().StringVar(&resumeFile, "resume", "", "Resume scan from file")
+	rootCmd.Flags().StringVar(&scanFlags, "scanflags", "", "Custom TCP scan flags (e.g., URGACKPSHRSTSYNFIN, 0x29)")
+	rootCmd.Flags().StringVarP(&spoofSource, "spoof-source", "S", "", "Spoof source IP address")
+	rootCmd.Flags().StringVar(&proxies, "proxies", "", "Relay connections through HTTP/SOCKS4 proxies (comma-separated URLs)")
+	rootCmd.Flags().StringVar(&dataHex, "data", "", "Append custom hex payload to packets")
+	rootCmd.Flags().StringVar(&dataString, "data-string", "", "Append custom ASCII string to packets")
+	rootCmd.Flags().StringVar(&ipOptions, "ip-options", "", "Send packets with specified IP options (hex)")
+	rootCmd.Flags().IntVar(&maxOSTries, "max-os-tries", 0, "Maximum number of OS detection attempts")
+	rootCmd.Flags().BoolVar(&versionTrace, "version-trace", false, "Show detailed version scan activity")
+	rootCmd.Flags().StringVar(&scriptArgs, "script-args", "", "Arguments to scripts (key1=val1,key2=val2)")
+	rootCmd.Flags().BoolVar(&scriptTrace, "script-trace", false, "Show all script data sent/received")
+	rootCmd.Flags().StringVar(&excludePorts, "exclude-ports", "", "Exclude specified ports from scanning")
+	rootCmd.Flags().IntVar(&minHostgroup, "min-hostgroup", 0, "Minimum parallel host scan group size")
+	rootCmd.Flags().IntVar(&maxHostgroup, "max-hostgroup", 0, "Maximum parallel host scan group size")
+	rootCmd.Flags().StringVar(&outputSkiddie, "oS", "", "Script kiddie output to file")
+	rootCmd.Flags().BoolVar(&ifList, "iflist", false, "Print host interfaces and routes")
+	rootCmd.Flags().StringVar(&stylesheet, "stylesheet", "", "XSL stylesheet for XML output")
+	rootCmd.Flags().BoolVar(&webXML, "webxml", false, "Reference Nmap.Org stylesheet for portable XML")
+	rootCmd.Flags().BoolVar(&noStylesheet, "no-stylesheet", false, "Prevent XSL stylesheet in XML output")
+	rootCmd.Flags().Float64Var(&portRatio, "port-ratio", 0, "Scan ports with open frequency >= ratio (0.0-1.0)")
 
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
@@ -270,10 +308,96 @@ func run(cmd *cobra.Command, args []string) error {
 		MinRTTTimeout:     minRTTTimeout,
 		MaxRTTTimeout:     maxRTTTimeout,
 		InitialRTTTimeout: initialRTT,
+		SpoofSourceIP:     spoofSource,
+		DataString:         dataString,
+		MaxOSTries:         maxOSTries,
+		VersionTrace:       versionTrace,
+		ScriptTrace:        scriptTrace,
+		MinHostgroup:       minHostgroup,
+		MaxHostgroup:       maxHostgroup,
+	}
+
+	// --iflist: print interfaces and exit
+	if ifList {
+		ifaces, err := gomap.ListInterfaces()
+		if err != nil {
+			return err
+		}
+		fmt.Print(gomap.FormatInterfaceList(ifaces))
+		return nil
+	}
+
+	// IP protocol scan mode (-sO)
+	if scanType == "protocol" || scanType == "ip-proto" || scanType == "sO" {
+		if len(args) == 0 {
+			return fmt.Errorf("IP protocol scan requires a target host")
+		}
+		results, err := gomap.IPProtocolScan(ctx, args[0], opts)
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			if r.Open {
+				fmt.Printf("%-6d %-18s %s\n", r.Protocol, r.State.String(), r.Name)
+			}
+		}
+		return nil
+	}
+
+	// Parse --scanflags
+	if scanFlags != "" {
+		flags, err := gomap.ParseScanFlags(scanFlags)
+		if err != nil {
+			return fmt.Errorf("parsing scanflags: %w", err)
+		}
+		opts.ScanFlags = flags
+		opts.ScanFlagsSet = true
+	}
+
+	// Parse --proxies
+	if proxies != "" {
+		opts.Proxies = strings.Split(proxies, ",")
+	}
+
+	// Parse --data (hex)
+	if dataHex != "" {
+		data, err := parseHexData(dataHex)
+		if err != nil {
+			return fmt.Errorf("parsing --data: %w", err)
+		}
+		opts.Data = data
+	}
+
+	// Parse --ip-options (hex)
+	if ipOptions != "" {
+		data, err := parseHexData(ipOptions)
+		if err != nil {
+			return fmt.Errorf("parsing --ip-options: %w", err)
+		}
+		opts.IPOptions = data
+	}
+
+	// Parse --script-args
+	if scriptArgs != "" {
+		opts.ScriptArgs = parseScriptArgs(scriptArgs)
+	}
+
+	// Parse --exclude-ports
+	if excludePorts != "" {
+		excluded, err := gomap.ParsePortRange(excludePorts)
+		if err != nil {
+			return fmt.Errorf("parsing --exclude-ports: %w", err)
+		}
+		opts.ExcludePorts = excluded
+	}
+
+	// --port-ratio overrides --top-ports and port spec
+	if portRatio > 0 {
+		opts.Ports = gomap.PortsByRatio(portRatio)
 	}
 
 	// Parse port specification
-	if portSpec != "" {
+	if portSpec != "" && portRatio == 0 {
 		ports, err := gomap.ParsePortRange(portSpec)
 		if err != nil {
 			return fmt.Errorf("parsing ports: %w", err)
@@ -301,6 +425,9 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	if outputGrep != "" {
 		outCfg.GrepFile = outputGrep
+	}
+	if outputSkiddie != "" {
+		outCfg.ScriptKiddieFile = outputSkiddie
 	}
 	if outCfg.HasFileOutput() {
 		opts.Output = outCfg
@@ -495,6 +622,8 @@ func run(cmd *cobra.Command, args []string) error {
 					Port:    p.Port,
 					Service: p.Service,
 					Result:  result,
+					Args:    opts.ScriptArgs,
+					Trace:   opts.ScriptTrace,
 				}
 				outputs := gomap.DefaultEngine.RunScripts(ctx, scripts, target, 4)
 				for _, out := range outputs {
@@ -597,6 +726,8 @@ func parseScanType(s string) (gomap.ScanType, error) {
 		return gomap.IdleScan, nil
 	case "ftp-bounce", "bounce":
 		return gomap.FTPBounceScan, nil
+	case "protocol", "ip-proto", "sO":
+		return gomap.ConnectScan, nil // protocol scan handled separately
 	default:
 		return gomap.ConnectScan, fmt.Errorf("unknown scan type: %s (valid: connect, syn, fin, xmas, null, ack, window, maimon, udp, sctp-init, sctp-cookie-echo, idle, ftp-bounce)", s)
 	}
@@ -664,6 +795,46 @@ func printResults(single *gomap.ScanResult, multi gomap.RangeScanResult, st goma
 	}
 
 	return nil
+}
+
+func parseHexData(hex string) ([]byte, error) {
+	hex = strings.TrimPrefix(hex, "0x")
+	hex = strings.TrimPrefix(hex, "0X")
+	hex = strings.ReplaceAll(hex, " ", "")
+	hex = strings.ReplaceAll(hex, ":", "")
+	if len(hex)%2 != 0 {
+		hex = "0" + hex
+	}
+	data := make([]byte, len(hex)/2)
+	for i := 0; i < len(hex); i += 2 {
+		var b byte
+		for j := 0; j < 2; j++ {
+			c := hex[i+j]
+			switch {
+			case c >= '0' && c <= '9':
+				b = (b << 4) | (c - '0')
+			case c >= 'a' && c <= 'f':
+				b = (b << 4) | (c - 'a' + 10)
+			case c >= 'A' && c <= 'F':
+				b = (b << 4) | (c - 'A' + 10)
+			default:
+				return nil, fmt.Errorf("invalid hex character: %c", c)
+			}
+		}
+		data[i/2] = b
+	}
+	return data, nil
+}
+
+func parseScriptArgs(args string) map[string]string {
+	m := make(map[string]string)
+	for _, pair := range strings.Split(args, ",") {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			m[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	return m
 }
 
 func addReasonToOutput(single *gomap.ScanResult, multi gomap.RangeScanResult) string {

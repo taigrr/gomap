@@ -41,6 +41,12 @@ const (
 
 	// DiscoveryICMPNetmask sends an ICMP address mask request.
 	DiscoveryICMPNetmask
+
+	// DiscoverySCTPInit sends an SCTP INIT chunk to detect hosts (-PY).
+	DiscoverySCTPInit
+
+	// DiscoveryIPProtocol sends raw IP packets with varying protocol numbers (-PO).
+	DiscoveryIPProtocol
 )
 
 // DiscoveryOptions configures host discovery.
@@ -181,6 +187,10 @@ func probeHost(ctx context.Context, host string, opts DiscoveryOptions) HostResu
 			alive = probeICMPTimestamp(ctx, host, opts.Timeout)
 		case DiscoveryICMPNetmask:
 			alive = probeICMPNetmask(ctx, host, opts.Timeout)
+		case DiscoverySCTPInit:
+			alive = probeSCTPInit(ctx, host, opts.Ports, opts.Timeout)
+		case DiscoveryIPProtocol:
+			alive = probeIPProtocol(ctx, host, nil, opts.Timeout)
 		}
 
 		if alive {

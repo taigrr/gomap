@@ -179,44 +179,75 @@ func DetectOS(ctx context.Context, host string, openPort, closedPort int, opts S
 
 	targetIP := ips[len(ips)-1].String()
 
-	// Phase 1: Send 6 SYN probes to the open port to gather SEQ/OPS/WIN data
-	fp, err := sendOSProbes(ctx, laddr, targetIP, openPort, closedPort, opts.Timeout)
-	if err != nil {
-		return nil, fmt.Errorf("OS probe failed: %w", err)
+	// Determine number of OS detection attempts
+	maxTries := 1
+	if opts.MaxOSTries > 0 {
+		maxTries = opts.MaxOSTries
 	}
 
-	result.Fingerprint = *fp
-	result.Raw = formatFingerprint(fp)
+	var bestFP *OSFingerprint
+	var bestMatches []OSMatch
 
-	// Match fingerprint against the OS database
-	osdb, err := DefaultOSDB()
-	if err == nil && osdb != nil {
-		fpMap := fingerprintToMap(fp)
-		dbMatches := osdb.MatchOS(fpMap)
-
-		// Determine confidence threshold
-		threshold := OSScanGuessThreshold
-		if opts.OSScanGuess {
-			threshold = OSScanGuessAggressiveThreshold
+	for attempt := 0; attempt < maxTries; attempt++ {
+		if ctx.Err() != nil {
+			break
 		}
 
-		for _, dm := range dbMatches {
-			if dm.Accuracy < threshold {
-				continue
+		fp, err := sendOSProbes(ctx, laddr, targetIP, openPort, closedPort, opts.Timeout)
+		if err != nil {
+			if attempt == maxTries-1 {
+				return nil, fmt.Errorf("OS probe failed: %w", err)
 			}
-			match := OSMatch{
-				Name:     dm.Name,
-				CPE:      dm.CPE,
-				Accuracy: dm.Accuracy,
+			continue
+		}
+
+		bestFP = fp
+
+		osdb, err := DefaultOSDB()
+		if err == nil && osdb != nil {
+			fpMap := fingerprintToMap(fp)
+			dbMatches := osdb.MatchOS(fpMap)
+
+			threshold := OSScanGuessThreshold
+			if opts.OSScanGuess {
+				threshold = OSScanGuessAggressiveThreshold
 			}
-			if len(dm.Classes) > 0 {
-				match.Family = dm.Classes[0].Family
-				match.Generation = dm.Classes[0].Generation
-				match.DeviceType = dm.Classes[0].DeviceType
+
+			var matches []OSMatch
+			for _, dm := range dbMatches {
+				if dm.Accuracy < threshold {
+					continue
+				}
+				match := OSMatch{
+					Name:     dm.Name,
+					CPE:      dm.CPE,
+					Accuracy: dm.Accuracy,
+				}
+				if len(dm.Classes) > 0 {
+					match.Family = dm.Classes[0].Family
+					match.Generation = dm.Classes[0].Generation
+					match.DeviceType = dm.Classes[0].DeviceType
+				}
+				matches = append(matches, match)
 			}
-			result.Matches = append(result.Matches, match)
+
+			// Keep best result across attempts
+			if len(matches) > len(bestMatches) {
+				bestMatches = matches
+			}
+
+			// Perfect match — stop retrying
+			if len(matches) > 0 && matches[0].Accuracy >= 1.0 {
+				break
+			}
 		}
 	}
+
+	if bestFP != nil {
+		result.Fingerprint = *bestFP
+		result.Raw = formatFingerprint(bestFP)
+	}
+	result.Matches = bestMatches
 
 	return result, nil
 }
