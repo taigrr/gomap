@@ -1,3 +1,4 @@
 gomap
 dist/
 .crush
+coverage.out
