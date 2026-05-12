@@ -2,6 +2,7 @@ package gomap
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -74,7 +75,8 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 
 	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
 	if u.User != nil {
-		req += fmt.Sprintf("Proxy-Authorization: Basic %s\r\n", u.User.String())
+		credentials := base64.StdEncoding.EncodeToString([]byte(u.User.String()))
+		req += fmt.Sprintf("Proxy-Authorization: Basic %s\r\n", credentials)
 	}
 	req += "\r\n"
 
