@@ -25,7 +25,10 @@ import (
 	"time"
 )
 
-const ianaURL = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv"
+const (
+	ianaURL = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv"
+	nmapURL = "https://raw.githubusercontent.com/nmap/nmap/master/nmap-services"
+)
 
 type service struct {
 	Name      string
@@ -42,12 +45,15 @@ func main() {
 	tcpServices := make(map[int]service)
 	udpServices := make(map[int]service)
 
-	// Step 1: Load nmap-services if provided (frequency data + extra services)
+	// Step 1: Load nmap-services (frequency data + extra services)
 	if *nmapFile != "" {
 		log.Printf("Loading nmap-services from %s", *nmapFile)
 		loadNmapServices(*nmapFile, tcpServices, udpServices)
-		log.Printf("Loaded %d TCP, %d UDP from nmap-services", len(tcpServices), len(udpServices))
+	} else {
+		log.Printf("Fetching nmap-services from %s", nmapURL)
+		loadNmapServicesURL(nmapURL, tcpServices, udpServices)
 	}
+	log.Printf("Loaded %d TCP, %d UDP from nmap-services", len(tcpServices), len(udpServices))
 
 	// Step 2: Overlay IANA data (canonical names take priority)
 	log.Printf("Fetching IANA service registry from %s", ianaURL)
@@ -94,7 +100,25 @@ func loadNmapServices(path string, tcp, udp map[int]service) {
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(f)
+	loadNmapServicesReader(f, tcp, udp)
+}
+
+func loadNmapServicesURL(url string, tcp, udp map[int]service) {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatalf("fetching nmap-services: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		log.Fatalf("fetching nmap-services: unexpected status %s", resp.Status)
+	}
+
+	loadNmapServicesReader(resp.Body, tcp, udp)
+}
+
+func loadNmapServicesReader(reader io.Reader, tcp, udp map[int]service) {
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		log.Fatalf("reading nmap-services: %v", err)
 	}
