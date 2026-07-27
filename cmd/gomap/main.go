@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -93,8 +94,19 @@ var (
 	webXML           bool
 	noStylesheet     bool
 	portRatio        float64
-	version          = "dev"
+	version          = "devel" // overridable via -ldflags
 )
+
+func init() {
+	if version != "devel" {
+		return
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			version = v
+		}
+	}
+}
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -116,7 +128,7 @@ func main() {
 	rootCmd.Flags().IntVarP(&topPorts, "top-ports", "t", 0, "Scan only the top N most common ports")
 	rootCmd.Flags().BoolVarP(&discovery, "ping", "P", false, "Host discovery only (no port scan)")
 	rootCmd.Flags().BoolVarP(&osDetect, "os", "O", false, "Enable OS detection (requires root)")
-	rootCmd.Flags().BoolVarP(&bannerGrab, "version", "V", false, "Enable service version detection (banner grabbing)")
+	rootCmd.Flags().BoolVarP(&bannerGrab, "service-version", "V", false, "Enable service version detection (banner grabbing)")
 	rootCmd.Flags().StringVarP(&timing, "timing", "T", "", "Timing template: T0-T5 or paranoid/sneaky/polite/normal/aggressive/insane")
 	rootCmd.Flags().StringVar(&probeFile, "service-probes", "", "Path to nmap-service-probes file (default: embedded database)")
 	rootCmd.Flags().BoolVar(&traceroute, "traceroute", false, "Trace the route to the host")

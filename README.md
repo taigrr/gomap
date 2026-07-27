@@ -1,5 +1,10 @@
 # gomap
 
+[![CI](https://github.com/taigrr/gomap/actions/workflows/ci.yml/badge.svg)](https://github.com/taigrr/gomap/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/taigrr/gomap.svg)](https://pkg.go.dev/github.com/taigrr/gomap)
+[![Go Report Card](https://goreportcard.com/badge/github.com/taigrr/gomap)](https://goreportcard.com/report/github.com/taigrr/gomap)
+[![License: 0BSD](https://img.shields.io/badge/License-0BSD-blue.svg)](LICENSE)
+
 A pure Go, cross-platform, library-importable port scanner.
 
 ## Features
@@ -17,7 +22,7 @@ A pure Go, cross-platform, library-importable port scanner.
 ## Install
 
 ```bash
-go install github.com/taigrr/gomap/cmd@latest
+go install github.com/taigrr/gomap/cmd/gomap@latest
 ```
 
 ## CLI Usage
