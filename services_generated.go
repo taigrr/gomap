@@ -4931,7 +4931,7 @@ var TCPServices = map[int]string{
 	5520:  "ACE/Server services",
 	5530:  "ACE/Server services",
 	5540:  "Matter Operational Discovery and Communi",
-	5543:  "QF-Test License Server",
+	5543:  "QF-Test License Server / QF-Test MCP Server",
 	5544:  "unknown",
 	5550:  "Model Railway control using the CBUS message protocol",
 	5552:  "unknown",
