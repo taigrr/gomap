@@ -1,10 +1,12 @@
 package gomap
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -153,4 +155,55 @@ func mustParseURL(t *testing.T, rawURL string) *url.URL {
 	}
 
 	return parsedURL
+}
+
+func TestDialHTTPProxyDecodedCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		name, username, password string
+		noPassword               bool
+	}{
+		{name: "reserved characters", username: "user@example.com", password: "p@ss:%/ word"},
+		{name: "unicode", username: "utilisateur", password: "café"},
+		{name: "empty password", username: "user"},
+		{name: "username only", username: "user", noPassword: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			authCh := make(chan string, 1)
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					authCh <- "accept failed"
+					return
+				}
+				defer conn.Close()
+				conn.SetDeadline(time.Now().Add(3 * time.Second))
+				request, err := http.ReadRequest(bufio.NewReader(conn))
+				if err != nil {
+					authCh <- "read failed"
+					return
+				}
+				authCh <- request.Header.Get("Proxy-Authorization")
+				io.WriteString(conn, "HTTP/1.1 200 Connection established\r\n\r\n")
+			}()
+			proxyURL := &url.URL{Scheme: "http", Host: listener.Addr().String(), User: url.UserPassword(tc.username, tc.password)}
+			if tc.noPassword {
+				proxyURL.User = url.User(tc.username)
+			}
+			conn, err := dialProxy(context.Background(), proxyURL.String(), "example.com:443", time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn.Close()
+			expected := &http.Request{Header: make(http.Header)}
+			expected.SetBasicAuth(tc.username, tc.password)
+			if got, want := <-authCh, expected.Header.Get("Authorization"); got != want {
+				t.Fatalf("Proxy-Authorization = %q, want %q", got, want)
+			}
+		})
+	}
 }

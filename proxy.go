@@ -75,7 +75,8 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 
 	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
 	if u.User != nil {
-		credentials := base64.StdEncoding.EncodeToString([]byte(u.User.String()))
+		password, _ := u.User.Password()
+		credentials := base64.StdEncoding.EncodeToString([]byte(u.User.Username() + ":" + password))
 		req += fmt.Sprintf("Proxy-Authorization: Basic %s\r\n", credentials)
 	}
 	req += "\r\n"
