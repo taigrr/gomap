@@ -207,3 +207,63 @@ func TestDialHTTPProxyDecodedCredentials(t *testing.T) {
 		})
 	}
 }
+
+func TestDialHTTPProxyResponseParsing(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fragments []string
+		wantError bool
+		payload   string
+	}{
+		{"buffered tunnel data", []string{"HTTP/1.1 200 OK\r\n\r\nSSH-2.0-test\r\n"}, false, "SSH-2.0-test\r\n"},
+		{"fragmented success", []string{"HTTP/1.1 2", "00 Connection established\r\nX-Proxy: ok\r\n\r\n"}, false, ""},
+		{"status in header", []string{"HTTP/1.1 407 Authentication Required\r\nX-Code: 200\r\n\r\n"}, true, ""},
+		{"status in reason", []string{"HTTP/1.1 500 Error 200\r\n\r\n"}, true, ""},
+		{"truncated headers", []string{"HTTP/1.1 200 OK\r\n"}, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = listener.Close() }()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer func() { _ = conn.Close() }()
+				if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+					return
+				}
+				if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
+					return
+				}
+				for _, fragment := range tc.fragments {
+					if _, err := io.WriteString(conn, fragment); err != nil {
+						return
+					}
+					if len(tc.fragments) > 1 {
+						time.Sleep(20 * time.Millisecond)
+					}
+				}
+			}()
+			conn, err := dialHTTPProxy(context.Background(), mustParseURL(t, "http://"+listener.Addr().String()), "example.com:443", time.Second)
+			if conn != nil {
+				if tc.payload != "" {
+					data, readErr := io.ReadAll(conn)
+					if readErr != nil || string(data) != tc.payload {
+						t.Errorf("tunnel data = %q, error %v; want %q", data, readErr, tc.payload)
+					}
+				}
+				_ = conn.Close()
+			}
+			<-done
+			if (err != nil) != tc.wantError {
+				t.Fatalf("error = %v, want error %v", err, tc.wantError)
+			}
+		})
+	}
+}
