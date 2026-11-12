@@ -1,11 +1,13 @@
 package gomap
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -86,22 +88,29 @@ func dialHTTPProxy(ctx context.Context, u *url.URL, target string, timeout time.
 		return nil, err
 	}
 
-	// Read response (look for "200")
-	buf := make([]byte, readBufferSize)
-	n, err := conn.Read(buf)
+	reader := bufio.NewReader(conn)
+	response, err := http.ReadResponse(reader, &http.Request{Method: http.MethodConnect})
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("reading proxy CONNECT response: %w", err)
 	}
-
-	resp := string(buf[:n])
-	if !strings.Contains(resp, "200") {
+	if response.StatusCode != http.StatusOK {
 		conn.Close()
-		return nil, fmt.Errorf("proxy CONNECT failed: %s", strings.TrimSpace(strings.SplitN(resp, "\r\n", 2)[0]))
+		return nil, fmt.Errorf("proxy CONNECT failed: %s", response.Status)
 	}
 
 	conn.SetDeadline(time.Time{}) // clear deadline
-	return conn, nil
+	return &proxyConn{Conn: conn, reader: reader}, nil
+}
+
+// proxyConn preserves tunnel data buffered while reading the CONNECT response.
+type proxyConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (conn *proxyConn) Read(data []byte) (int, error) {
+	return conn.reader.Read(data)
 }
 
 func dialSOCKS4Proxy(ctx context.Context, u *url.URL, target string, timeout time.Duration) (net.Conn, error) {
