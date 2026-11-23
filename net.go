@@ -93,9 +93,11 @@ func createHostRangeV4(ipNet *net.IPNet) []string {
 	finish := (start & mask) | (mask ^ 0xffffffff)
 
 	var hosts []string
-	for i := start + 1; i <= finish-1; i++ {
+	// Widen before arithmetic so /32 ranges at either IPv4 boundary
+	// cannot wrap around and enumerate unrelated addresses.
+	for i := uint64(start) + 1; i < uint64(finish); i++ {
 		ip := make(net.IP, 4)
-		binary.BigEndian.PutUint32(ip, i)
+		binary.BigEndian.PutUint32(ip, uint32(i))
 		hosts = append(hosts, ip.String())
 	}
 	return hosts
