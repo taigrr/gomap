@@ -42,7 +42,11 @@ func ExcludePorts(ports []int, excludeSpec string) ([]int, error) {
 }
 
 // TopUDPPorts returns the top N most common UDP ports by frequency.
+// Ties are ordered by ascending port number. Non-positive N returns no ports.
 func TopUDPPorts(n int) []int {
+	if n <= 0 {
+		return []int{}
+	}
 	type pf struct {
 		port int
 		freq float64
@@ -56,6 +60,9 @@ func TopUDPPorts(n int) []int {
 	}
 
 	sort.Slice(pfs, func(i, j int) bool {
+		if pfs[i].freq == pfs[j].freq {
+			return pfs[i].port < pfs[j].port
+		}
 		return pfs[i].freq > pfs[j].freq
 	})
 
