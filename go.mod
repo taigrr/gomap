@@ -2,7 +2,7 @@ module github.com/taigrr/gomap
 
 go 1.27.2
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/charmbracelet/fang v1.0.0
